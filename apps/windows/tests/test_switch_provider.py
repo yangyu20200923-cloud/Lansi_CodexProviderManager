@@ -137,6 +137,20 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(self.state.read_bytes(), original_state)
         self.assertFalse((self.root / "backups").exists())
 
+    def test_switch_refuses_live_codex_process_before_creating_backups(self):
+        original_config = self.config.read_bytes()
+        original_state = self.state.read_bytes()
+
+        with patch(
+            "switch_provider._codex_processes", return_value=("codex.exe",), create=True
+        ):
+            with self.assertRaises(RuntimeError):
+                switch_provider("qilin", self.config, self.state)
+
+        self.assertEqual(self.config.read_bytes(), original_config)
+        self.assertEqual(self.state.read_bytes(), original_state)
+        self.assertFalse((self.root / "backups").exists())
+
     def test_switch_and_status_redact_config_and_database_paths(self):
         switch = switch_provider("qilin", self.config, self.state)
         current_status = status(self.config, self.state)

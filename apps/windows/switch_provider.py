@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from contextlib import closing
 import datetime as dt
 import hashlib
@@ -13,6 +14,7 @@ from pathlib import Path
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -39,6 +41,8 @@ PROVIDERS = {
         "review_model": "gpt-5.5",
     },
 }
+
+CODEX_PROCESS_NAMES = {"chatgpt.exe", "codex.exe", "codex-code-mode-host.exe"}
 
 MANAGED_BASE_URLS = (
     "https://www.qilinapi.com/v1",
@@ -275,6 +279,32 @@ def _release_lock(lock_dir: Path, owner_id: str) -> None:
     lock_dir.rmdir()
 
 
+def _codex_processes() -> tuple[str, ...]:
+    if os.name != "nt":
+        return ()
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError("Unable to verify that Codex is not running") from error
+    return tuple(
+        row[0]
+        for row in csv.reader(result.stdout.splitlines())
+        if row and row[0].lower() in CODEX_PROCESS_NAMES
+    )
+
+
+def _assert_codex_quiescent() -> None:
+    processes = _codex_processes()
+    if processes:
+        raise RuntimeError("Codex is running; close it before changing providers")
+
+
 def _thread_columns(connection: sqlite3.Connection) -> set[str]:
     return {row[1] for row in connection.execute("PRAGMA table_info(threads)")}
 
@@ -312,6 +342,7 @@ def switch_provider(
     if dry_run:
         return result
 
+    _assert_codex_quiescent()
     config_dir = config_path.parent
     backup_dir = config_dir / "backups" / "windows-provider-switch"
     lock_dir = config_dir / ".windows-provider-switch.lock"
@@ -416,6 +447,7 @@ def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, o
     state_backup = backup_dir / f"state-{timestamp}.sqlite"
     artifacts = [config_backup] + ([state_backup] if state_backup.exists() else [])
     _verify_backup_manifest(backup_dir / f"manifest-{timestamp}.json", artifacts)
+    _assert_codex_quiescent()
     lock_dir = config_path.parent / ".windows-provider-switch.lock"
     lock_owner = _acquire_lock(lock_dir)
     try:

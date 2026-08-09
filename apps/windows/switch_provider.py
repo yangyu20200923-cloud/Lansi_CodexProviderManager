@@ -16,6 +16,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+import uuid
 
 
 PROVIDERS = {
@@ -235,29 +236,43 @@ def _restore_config(config_backup: Path, config_path: Path) -> None:
             temp_path.unlink()
 
 
-def _acquire_lock(lock_dir: Path, timeout_seconds: float = 10.0) -> None:
+def _acquire_lock(lock_dir: Path, timeout_seconds: float = 10.0) -> str:
     deadline = time.monotonic() + timeout_seconds
+    owner_id = uuid.uuid4().hex
     while True:
         try:
             lock_dir.mkdir()
-            return
-        except FileExistsError:
             try:
-                if time.time() - lock_dir.stat().st_mtime > 60:
-                    lock_dir.rmdir()
-                    continue
-            except (FileNotFoundError, OSError):
-                pass
+                (lock_dir / "owner.json").write_text(
+                    json.dumps(
+                        {
+                            "owner_id": owner_id,
+                            "pid": os.getpid(),
+                            "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                        },
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+            except Exception:
+                lock_dir.rmdir()
+                raise
+            return owner_id
+        except FileExistsError:
             if time.monotonic() >= deadline:
                 raise RuntimeError("Another provider switch is still in progress")
             time.sleep(0.2)
 
 
-def _release_lock(lock_dir: Path) -> None:
+def _release_lock(lock_dir: Path, owner_id: str) -> None:
     try:
-        lock_dir.rmdir()
-    except OSError:
-        pass
+        owner = json.loads((lock_dir / "owner.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("Provider switch lock ownership was lost") from error
+    if owner.get("owner_id") != owner_id:
+        raise RuntimeError("Provider switch lock ownership was lost")
+    (lock_dir / "owner.json").unlink()
+    lock_dir.rmdir()
 
 
 def _thread_columns(connection: sqlite3.Connection) -> set[str]:
@@ -300,7 +315,7 @@ def switch_provider(
     config_dir = config_path.parent
     backup_dir = config_dir / "backups" / "windows-provider-switch"
     lock_dir = config_dir / ".windows-provider-switch.lock"
-    _acquire_lock(lock_dir)
+    lock_owner = _acquire_lock(lock_dir)
     try:
         backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
@@ -385,7 +400,7 @@ def switch_provider(
                 state_connection.close()
         return result
     finally:
-        _release_lock(lock_dir)
+        _release_lock(lock_dir, lock_owner)
 
 
 def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, object]:
@@ -402,7 +417,7 @@ def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, o
     artifacts = [config_backup] + ([state_backup] if state_backup.exists() else [])
     _verify_backup_manifest(backup_dir / f"manifest-{timestamp}.json", artifacts)
     lock_dir = config_path.parent / ".windows-provider-switch.lock"
-    _acquire_lock(lock_dir)
+    lock_owner = _acquire_lock(lock_dir)
     try:
         pre_restore_stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         if config_path.exists():
@@ -431,7 +446,7 @@ def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, o
             "state_backup": state_backup.name if restored_state else None,
         }
     finally:
-        _release_lock(lock_dir)
+        _release_lock(lock_dir, lock_owner)
 
 
 def status(config_path: Path, state_db_path: Path | None) -> dict[str, object]:

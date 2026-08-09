@@ -1,7 +1,10 @@
+import json
+import os
 import sqlite3
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import closing
 from pathlib import Path
@@ -11,7 +14,15 @@ from unittest.mock import patch
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT))
 
-from switch_provider import PROVIDERS, render_config, restore_latest, status, switch_provider
+from switch_provider import (
+    PROVIDERS,
+    _acquire_lock,
+    _release_lock,
+    render_config,
+    restore_latest,
+    status,
+    switch_provider,
+)
 
 
 SAMPLE_CONFIG = '''model = "old-model"
@@ -135,6 +146,26 @@ class SwitchTests(unittest.TestCase):
             self.assertNotIn(str(self.root), result["state_db"])
         self.assertEqual(switch["config"], "config.toml")
         self.assertEqual(switch["state_db"], "state_5.sqlite")
+
+    def test_lock_records_owner_metadata(self):
+        lock_dir = self.root / ".windows-provider-switch.lock"
+
+        owner_id = _acquire_lock(lock_dir, timeout_seconds=0)
+
+        metadata = json.loads((lock_dir / "owner.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["owner_id"], owner_id)
+        self.assertEqual(metadata["pid"], os.getpid())
+        _release_lock(lock_dir, owner_id)
+        self.assertFalse(lock_dir.exists())
+
+    def test_lock_does_not_reclaim_old_directory_by_age_alone(self):
+        lock_dir = self.root / ".windows-provider-switch.lock"
+        lock_dir.mkdir()
+        old_timestamp = time.time() - 120
+        os.utime(lock_dir, (old_timestamp, old_timestamp))
+
+        with self.assertRaises(RuntimeError):
+            _acquire_lock(lock_dir, timeout_seconds=0)
 
     def test_restore_latest_restores_matching_config_and_database(self):
         switch = switch_provider("qilin", self.config, self.state)

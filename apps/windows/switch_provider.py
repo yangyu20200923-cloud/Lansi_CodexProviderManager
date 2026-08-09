@@ -280,13 +280,13 @@ def switch_provider(
         timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         config_backup = backup_dir / f"config-{timestamp}.toml"
         shutil.copy2(config_path, config_backup)
-        result["config_backup"] = str(config_backup)
+        result["config_backup"] = config_backup.name
 
         state_backup: Path | None = None
         if state_db_path and state_db_path.exists():
             state_backup = backup_dir / f"state-{timestamp}.sqlite"
             _backup_database(state_db_path, state_backup)
-            result["state_backup"] = str(state_backup)
+            result["state_backup"] = state_backup.name
 
         artifacts = [config_backup] + ([state_backup] if state_backup else [])
         manifest_path = backup_dir / f"manifest-{timestamp}.json"
@@ -294,7 +294,7 @@ def switch_provider(
             json.dumps({"files": {path.name: _sha256(path) for path in artifacts}}, sort_keys=True),
             encoding="utf-8",
         )
-        result["backup_manifest"] = str(manifest_path)
+        result["backup_manifest"] = manifest_path.name
 
         state_connection: sqlite3.Connection | None = None
         temp_path: Path | None = None
@@ -397,8 +397,8 @@ def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, o
             restored_state = True
         return {
             "restored": True,
-            "config_backup": str(config_backup),
-            "state_backup": str(state_backup) if restored_state else None,
+            "config_backup": config_backup.name,
+            "state_backup": state_backup.name if restored_state else None,
         }
     finally:
         _release_lock(lock_dir)

@@ -100,9 +100,11 @@ class SwitchTests(unittest.TestCase):
         self.assertTrue(result["verified_config"])
         self.assertTrue(result["verified_threads"])
         self.assertEqual(result["synced_threads"], 1)
-        self.assertTrue(Path(result["config_backup"]).exists())
-        self.assertTrue(Path(result["state_backup"]).exists())
-        self.assertTrue(Path(result["backup_manifest"]).exists())
+        backup_dir = self.root / "backups" / "windows-provider-switch"
+        self.assertTrue((backup_dir / result["config_backup"]).exists())
+        self.assertTrue((backup_dir / result["state_backup"]).exists())
+        self.assertTrue((backup_dir / result["backup_manifest"]).exists())
+        self.assertNotIn(str(self.root), result["config_backup"])
         self.assertIn('model_provider = "vectorengine"', self.config.read_text(encoding="utf-8"))
         with closing(sqlite3.connect(self.state)) as connection:
             provider, preview = connection.execute(
@@ -124,7 +126,8 @@ class SwitchTests(unittest.TestCase):
 
     def test_restore_latest_restores_matching_config_and_database(self):
         switch = switch_provider("qilin", self.config, self.state)
-        Path(switch["config_backup"]).write_text("tampered\n", encoding="utf-8")
+        backup_dir = self.root / "backups" / "windows-provider-switch"
+        (backup_dir / switch["config_backup"]).write_text("tampered\n", encoding="utf-8")
         self.config.write_text('model_provider = "damaged"\n', encoding="utf-8")
         with closing(sqlite3.connect(self.state)) as connection:
             connection.execute("UPDATE threads SET model_provider = 'damaged'")
@@ -143,6 +146,11 @@ class SwitchTests(unittest.TestCase):
         result = restore_latest(self.config, self.state)
 
         self.assertTrue(result["restored"])
+        self.assertNotIn(str(self.root), result["config_backup"])
+        self.assertNotIn(str(self.root), result["state_backup"])
+        backup_dir = self.root / "backups" / "windows-provider-switch"
+        self.assertTrue((backup_dir / result["config_backup"]).exists())
+        self.assertTrue((backup_dir / result["state_backup"]).exists())
         self.assertEqual(self.config.read_text(encoding="utf-8"), SAMPLE_CONFIG)
         with closing(sqlite3.connect(self.state)) as connection:
             provider = connection.execute("SELECT model_provider FROM threads WHERE id = 'one'").fetchone()[0]

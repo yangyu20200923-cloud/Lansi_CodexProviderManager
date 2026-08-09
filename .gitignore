@@ -1,0 +1,32 @@
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+
+# macOS SwiftPM build output and packaged applications
+apps/macos/.build/
+apps/macos/dist/
+CodexProviderManager/.build/
+CodexProviderManager/dist/
+
+# Python and PowerShell development output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local editor and Codex workspace artifacts
+.vscode/
+.idea/
+.codex/tmp/
+.codex/logs/
+.codex/scratch/
+.codex/artifacts/
+
+# Credentials, local configuration, backups, and diagnostics
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+backups/
+diagnostics/

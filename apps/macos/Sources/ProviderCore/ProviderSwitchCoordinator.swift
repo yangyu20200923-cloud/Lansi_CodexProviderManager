@@ -40,6 +40,8 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
         var backup: BackupManifest?
         var previousKeyProvider: ProviderID = .openAI
         do {
+            let lock = try SwitchLock.acquire(in: codexHome)
+            defer { try? lock.release() }
             let before = try history.snapshot()
             if let raw = try CodexConfigService().read(from: codexHome.appendingPathComponent("config.toml")).activeProvider,
                let id = ProviderID(rawValue: raw) { previousKeyProvider = id }

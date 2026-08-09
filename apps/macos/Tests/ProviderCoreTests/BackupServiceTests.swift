@@ -24,4 +24,17 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertFalse(manifestText.contains(home.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: manifest.directory.appendingPathComponent("state_5.sqlite").path))
     }
+
+    func testRestoreRejectsTamperedBackupArtifact() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try "model_provider = \"custom\"\n".write(to: home.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+
+        let service = BackupService(backupRoot: home.appendingPathComponent("backups"))
+        let manifest = try service.create(codexHome: home)
+        try "tampered\n".write(to: manifest.directory.appendingPathComponent("config.toml"), atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try service.restore(manifest, to: home))
+    }
 }

@@ -4,6 +4,7 @@ import CryptoKit
 
 public enum BackupError: Error {
     case sqlite(String)
+    case checksumMismatch(String)
 }
 
 public struct BackupManifest: Codable, Equatable, Sendable {
@@ -60,6 +61,13 @@ public final class BackupService: @unchecked Sendable {
     }
 
     public func restore(_ manifest: BackupManifest, to codexHome: URL) throws {
+        for name in manifest.files {
+            guard let expected = manifest.checksums[name] else { continue }
+            let source = manifest.directory.appendingPathComponent(name)
+            guard Self.sha256(try Data(contentsOf: source)) == expected else {
+                throw BackupError.checksumMismatch(name)
+            }
+        }
         for sidecar in ["state_5.sqlite-wal", "state_5.sqlite-shm"] {
             let current = codexHome.appendingPathComponent(sidecar)
             if FileManager.default.fileExists(atPath: current.path) {

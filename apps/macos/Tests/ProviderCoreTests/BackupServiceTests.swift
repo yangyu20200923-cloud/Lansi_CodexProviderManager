@@ -20,6 +20,7 @@ final class BackupServiceTests: XCTestCase {
 
         XCTAssertTrue(manifest.files.contains("config.toml"))
         XCTAssertTrue(manifest.files.contains("state_5.sqlite"))
+        XCTAssertEqual(manifest.checksums.keys.sorted(), manifest.files.sorted())
         XCTAssertFalse(manifestText.contains(home.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: manifest.directory.appendingPathComponent("state_5.sqlite").path))
     }

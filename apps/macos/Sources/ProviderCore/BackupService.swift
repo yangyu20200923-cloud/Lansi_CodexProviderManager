@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import CryptoKit
 
 public enum BackupError: Error {
     case sqlite(String)
@@ -10,7 +11,16 @@ public struct BackupManifest: Codable, Equatable, Sendable {
     public var backupID: String { directory.lastPathComponent }
     public let createdAt: Date
     public let files: [String]
+    public let checksums: [String: String]
     public var isPinned: Bool
+
+    public init(directory: URL, createdAt: Date, files: [String], checksums: [String: String] = [:], isPinned: Bool) {
+        self.directory = directory
+        self.createdAt = createdAt
+        self.files = files
+        self.checksums = checksums
+        self.isPinned = isPinned
+    }
 }
 
 public final class BackupService: @unchecked Sendable {
@@ -39,7 +49,11 @@ public final class BackupService: @unchecked Sendable {
             else { try FileManager.default.copyItem(at: source, to: destination) }
             files.append(name)
         }
-        let manifest = BackupManifest(directory: directory, createdAt: Date(), files: files, isPinned: false)
+        var checksums: [String: String] = [:]
+        for name in files {
+            checksums[name] = Self.sha256(try Data(contentsOf: directory.appendingPathComponent(name)))
+        }
+        let manifest = BackupManifest(directory: directory, createdAt: Date(), files: files, checksums: checksums, isPinned: false)
         try JSONEncoder().encode(manifest).write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
         try prune(root: root)
         return manifest
@@ -93,5 +107,9 @@ public final class BackupService: @unchecked Sendable {
         guard step == SQLITE_DONE, finish == SQLITE_OK else {
             throw BackupError.sqlite(String(cString: sqlite3_errmsg(destinationDB)))
         }
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

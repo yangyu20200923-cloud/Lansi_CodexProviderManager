@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+for file in README.md CONTRIBUTING.md SECURITY.md CODE_OF_CONDUCT.md CHANGELOG.md LICENSE docs/development/repository-layout.md; do
+  test -s "$file" || exit 1
+done
+rg -q 'Lansi_CodexProviderManager' README.md
+rg -q '兰司观察 Codex_Provider 切换器' README.md
+rg -q 'apps/macos' README.md
+rg -q 'apps/windows' README.md
+rg -q 'not affiliated with or endorsed by OpenAI' README.md

@@ -1,9 +1,11 @@
 import sqlite3
+import shutil
 import sys
 import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -165,6 +167,21 @@ class SwitchTests(unittest.TestCase):
         with closing(sqlite3.connect(self.state)) as connection:
             provider = connection.execute("SELECT model_provider FROM threads WHERE id = 'one'").fetchone()[0]
         self.assertEqual(provider, "custom")
+
+    def test_restore_latest_rejects_corrupted_config_readback(self):
+        switch_provider("qilin", self.config, self.state)
+        self.config.write_text('model_provider = "damaged"\n', encoding="utf-8")
+        original_copy2 = shutil.copy2
+
+        def corrupt_restored_config(source, destination, *args, **kwargs):
+            result = original_copy2(source, destination, *args, **kwargs)
+            if Path(source).name.startswith("config-"):
+                Path(destination).write_text("corrupted\n", encoding="utf-8")
+            return result
+
+        with patch("switch_provider.shutil.copy2", side_effect=corrupt_restored_config):
+            with self.assertRaises(RuntimeError):
+                restore_latest(self.config, self.state)
 
 
 if __name__ == "__main__":

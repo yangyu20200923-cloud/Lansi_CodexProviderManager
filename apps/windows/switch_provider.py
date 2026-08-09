@@ -199,6 +199,14 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _sqlite_content_hash(path: Path) -> str:
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as connection:
+        if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise RuntimeError("State database integrity check failed")
+        dump = "\n".join(connection.iterdump()).encode("utf-8")
+    return hashlib.sha256(dump).hexdigest()
+
+
 def _verify_backup_manifest(manifest_path: Path, artifacts: list[Path]) -> None:
     try:
         expected = json.loads(manifest_path.read_text(encoding="utf-8"))["files"]
@@ -207,6 +215,24 @@ def _verify_backup_manifest(manifest_path: Path, artifacts: list[Path]) -> None:
     for artifact in artifacts:
         if not artifact.exists() or expected.get(artifact.name) != _sha256(artifact):
             raise RuntimeError(f"Backup verification failed: {artifact.name}")
+
+
+def _restore_config(config_backup: Path, config_path: Path) -> None:
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=config_path.parent,
+            prefix=".restore-provider-",
+            suffix=".toml",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+        shutil.copy2(config_backup, temp_path)
+        os.replace(temp_path, config_path)
+        temp_path = None
+    finally:
+        if temp_path and temp_path.exists():
+            temp_path.unlink()
 
 
 def _acquire_lock(lock_dir: Path, timeout_seconds: float = 10.0) -> None:
@@ -383,7 +409,9 @@ def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, o
             shutil.copy2(
                 config_path, backup_dir / f"pre-restore-config-{pre_restore_stamp}.toml"
             )
-        shutil.copy2(config_backup, config_path)
+        _restore_config(config_backup, config_path)
+        if _sha256(config_path) != _sha256(config_backup):
+            raise RuntimeError("Config restore verification failed")
         restored_state = False
         if state_db_path and state_backup.exists():
             if state_db_path.exists():
@@ -394,6 +422,8 @@ def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, o
             with closing(sqlite3.connect(state_backup)) as source:
                 with closing(sqlite3.connect(state_db_path)) as destination:
                     source.backup(destination)
+            if _sqlite_content_hash(state_db_path) != _sqlite_content_hash(state_backup):
+                raise RuntimeError("State database restore verification failed")
             restored_state = True
         return {
             "restored": True,

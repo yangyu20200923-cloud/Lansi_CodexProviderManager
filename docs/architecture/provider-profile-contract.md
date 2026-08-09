@@ -12,6 +12,8 @@ A profile catalog is non-secret. API keys, tokens, auth files, sessions, databas
 
 A field may become managed only when a current, accessible official OpenAI source records its semantics. Until then, both platforms preserve it and never add, remove, or rewrite it under the Phase 1 contract.
 
+Compatibility exception: fields already written by both existing platform implementations may be marked compatibility-managed while official documentation is unavailable. Each exception requires synthetic cross-platform fixtures, normalized-output comparison, and no expansion beyond the existing field set.
+
 ## Profile Shape
 
 The future portable profile has: stable UUID id, name, enabled, authMode, baseUrl, wireApi, apiKeyEnv, model, reasoningEffort, reviewModel, and whitelisted configOverrides. authMode is chatgpt_login or api_key. Credential values are held only by platform-native secret storage.

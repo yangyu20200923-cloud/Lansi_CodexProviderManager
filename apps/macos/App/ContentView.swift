@@ -22,10 +22,14 @@ struct ContentView: View {
 
     private var actionBar: some View {
         HStack(spacing: 12) {
-            Button { model.restoreDefaults() } label: { Label(localization.string("button.restore_defaults"), systemImage: "arrow.counterclockwise") }
-                .disabled(model.isBusy)
+            if model.selectedID.isBuiltIn {
+                Button { model.restoreDefaults() } label: { Label(localization.string("button.restore_defaults"), systemImage: "arrow.counterclockwise") }
+                    .disabled(model.isBusy)
+            }
             Spacer()
             ProgressView().controlSize(.small).opacity(model.isBusy ? 1 : 0)
+            Button { model.saveProfile() } label: { Label(localization.string("button.save_provider"), systemImage: "square.and.arrow.down") }
+                .disabled(model.isBusy || !model.validationIssues.isEmpty)
             Button { Task { await model.apply() } } label: { Label(localization.string("button.apply_restart"), systemImage: "arrow.clockwise") }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.isBusy || !model.validationIssues.isEmpty)

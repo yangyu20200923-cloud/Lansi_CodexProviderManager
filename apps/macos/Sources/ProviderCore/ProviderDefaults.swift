@@ -1,7 +1,6 @@
 public enum ProviderDefaults {
     public static func profile(for id: ProviderID) -> ProviderProfile {
-        switch id {
-        case .openAI:
+        if id == .openAI {
             return ProviderProfile(
                 id: .openAI,
                 displayName: "OpenAI / ChatGPT",
@@ -10,28 +9,41 @@ public enum ProviderDefaults {
                 model: nil,
                 isBuiltIn: true
             )
-        case .qilin:
+        }
+        if id == .qilin {
             return ProviderProfile(
                 id: .qilin,
                 displayName: "Qilin",
                 baseURL: "https://www.qilinapi.com/v1",
                 wireAPI: "responses",
+                apiKeyEnvironment: "QILIN_API_KEY",
                 model: "gpt-5.5",
                 isBuiltIn: false
             )
-        case .vectorEngine:
+        }
+        if id == .vectorEngine {
             return ProviderProfile(
                 id: .vectorEngine,
                 displayName: "VectorEngine",
                 baseURL: "https://api.vectorengine.cn/v1",
                 wireAPI: "responses",
+                apiKeyEnvironment: "VECTORENGINE_API_KEY",
                 model: "gpt-5.5",
                 isBuiltIn: false
             )
         }
+        return ProviderProfile(
+            id: id,
+            displayName: "Custom Provider",
+            baseURL: nil,
+            wireAPI: "responses",
+            apiKeyEnvironment: nil,
+            model: nil,
+            isBuiltIn: false
+        )
     }
 
     public static var all: [ProviderProfile] {
-        ProviderID.allCases.map(profile(for:))
+        ProviderID.builtInIDs.map(profile(for:))
     }
 }

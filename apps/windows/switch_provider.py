@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 import uuid
+from profile_catalog import load_catalog
 
 
 PROVIDERS = {
@@ -194,6 +195,44 @@ def render_config(original: str, provider: str) -> str:
     return "".join(rendered_parts).rstrip() + newline
 
 
+def render_custom_profile_config(original: str, profile: dict[str, object]) -> tuple[str, str]:
+    profile_id = uuid.UUID(str(profile["id"]))
+    provider = f"custom_{profile_id.hex[:12]}"
+    base_url = str(profile["baseUrl"])
+    wire_api = str(profile.get("wireApi") or "responses")
+    environment_key = str(profile["apiKeyEnv"])
+    model = str(profile.get("model") or "gpt-5.6-sol")
+    reasoning_effort = profile.get("reasoningEffort")
+    review_model = profile.get("reviewModel")
+    newline = _newline_for(original)
+    root, blocks = _split_table_blocks(original)
+    blocks = [(name, block) for name, block in blocks if name != f"model_providers.{provider}"]
+    root = _replace_root_key(root, "model", json.dumps(model), newline)
+    root = _replace_root_key(root, "model_provider", json.dumps(provider), newline)
+    root = _replace_root_key(
+        root, "model_reasoning_effort", json.dumps(str(reasoning_effort)) if reasoning_effort else None, newline
+    )
+    root = _replace_root_key(root, "review_model", json.dumps(str(review_model)) if review_model else None, newline)
+    blocks = _set_table_key(blocks, "history", "persistence", '"save-all"', newline)
+    while root and not root[-1].strip():
+        root.pop()
+    rendered = root[:]
+    if rendered:
+        rendered.append(newline)
+    for _, block in blocks:
+        rendered.extend(block)
+        if rendered[-1].strip():
+            rendered.append(newline)
+    rendered.extend([
+        f"[model_providers.{provider}]{newline}",
+        f"name = {json.dumps(str(profile['name']))}{newline}",
+        f"base_url = {json.dumps(base_url)}{newline}",
+        f"wire_api = {json.dumps(wire_api)}{newline}",
+        f"env_key = {json.dumps(environment_key)}{newline}",
+    ])
+    return provider, "".join(rendered).rstrip() + newline
+
+
 def _backup_database(source_path: Path, backup_path: Path) -> None:
     with closing(sqlite3.connect(source_path, timeout=10)) as source:
         with closing(sqlite3.connect(backup_path)) as destination:
@@ -352,6 +391,7 @@ def switch_provider(
     config_path: Path,
     state_db_path: Path | None,
     dry_run: bool = False,
+    rendered_config: str | None = None,
 ) -> dict[str, object]:
     definition = _validate_provider(provider)
     config_path = Path(config_path)
@@ -360,7 +400,7 @@ def switch_provider(
         raise FileNotFoundError(f"Codex config not found: {config_path}")
 
     original = config_path.read_text(encoding="utf-8")
-    rendered = render_config(original, provider)
+    rendered = rendered_config if rendered_config is not None else render_config(original, provider)
     result: dict[str, object] = {
         "provider": provider,
         "display_name": definition["display_name"],
@@ -477,6 +517,19 @@ def switch_provider(
         _release_lock(lock_dir, lock_owner)
 
 
+def switch_custom_profile(
+    profile: dict[str, object], config_path: Path, state_db_path: Path | None, dry_run: bool = False
+) -> dict[str, object]:
+    provider, rendered = render_custom_profile_config(Path(config_path).read_text(encoding="utf-8"), profile)
+    PROVIDERS[provider] = {
+        "display_name": str(profile["name"]),
+        "env_key": str(profile["apiKeyEnv"]),
+        "reasoning_effort": str(profile.get("reasoningEffort") or "medium"),
+        "review_model": str(profile["reviewModel"]) if profile.get("reviewModel") else None,
+    }
+    return switch_provider(provider, config_path, state_db_path, dry_run, rendered)
+
+
 def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, object]:
     config_path = Path(config_path)
     state_db_path = Path(state_db_path) if state_db_path else None
@@ -560,7 +613,9 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("status")
     switch_parser = subparsers.add_parser("switch")
-    switch_parser.add_argument("provider", choices=tuple(PROVIDERS))
+    switch_parser.add_argument("provider", nargs="?")
+    switch_parser.add_argument("--catalog", type=Path)
+    switch_parser.add_argument("--profile-id")
     switch_parser.add_argument("--dry-run", action="store_true")
     subparsers.add_parser("restore")
     args = parser.parse_args()
@@ -569,9 +624,16 @@ def main() -> int:
         if args.command == "status":
             result = status(args.config, args.state_db)
         elif args.command == "switch":
-            result = switch_provider(
-                args.provider, args.config, args.state_db, dry_run=args.dry_run
-            )
+            if args.catalog and args.profile_id:
+                profile = next(
+                    (item for item in load_catalog(args.catalog)["profiles"] if item["id"] == args.profile_id),
+                    None,
+                )
+                if profile is None: raise ValueError("Custom Provider profile was not found")
+                result = switch_custom_profile(profile, args.config, args.state_db, dry_run=args.dry_run)
+            else:
+                if args.provider not in PROVIDERS: raise ValueError("A built-in provider or catalog profile is required")
+                result = switch_provider(args.provider, args.config, args.state_db, dry_run=args.dry_run)
         else:
             result = restore_latest(args.config, args.state_db)
         print(json.dumps(result, ensure_ascii=False, indent=2))

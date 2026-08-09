@@ -7,6 +7,6 @@ final class ProviderCoreSmokeTests: XCTestCase {
     }
 
     func testAllProvidersAreAvailable() {
-        XCTAssertEqual(Set(ProviderID.allCases), [.openAI, .qilin, .vectorEngine])
+        XCTAssertEqual(Set(ProviderID.builtInIDs), [.openAI, .qilin, .vectorEngine])
     }
 }

@@ -22,4 +22,22 @@ final class ProviderProfileTests: XCTestCase {
         profile.wireAPI = "custom-responses"
         XCTAssertTrue(ProviderValidator.validate(profile).isEmpty)
     }
+
+    func testCustomProviderHasStableUUIDAndDedicatedConfigKey() {
+        let id = ProviderID.custom()
+        let profile = ProviderProfile(
+            id: id,
+            displayName: "Example Provider",
+            baseURL: "https://api.example.invalid/v1",
+            wireAPI: "responses",
+            apiKeyEnvironment: "EXAMPLE_PROVIDER_API_KEY",
+            model: "example-model",
+            isBuiltIn: false
+        )
+
+        XCTAssertTrue(UUID(uuidString: id.rawValue) != nil)
+        XCTAssertTrue(profile.configProviderID.hasPrefix("custom_"))
+        XCTAssertFalse(profile.configProviderID.contains("-"))
+        XCTAssertTrue(ProviderValidator.validate(profile).isEmpty)
+    }
 }

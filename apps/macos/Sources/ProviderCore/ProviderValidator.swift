@@ -5,6 +5,7 @@ public struct ValidationIssue: Equatable, Sendable {
         case displayName
         case baseURL
         case wireAPI
+        case apiKeyEnvironment
     }
 
     public let field: Field
@@ -38,6 +39,11 @@ public enum ProviderValidator {
 
         if profile.wireAPI?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
             issues.append(.init(field: .wireAPI, message: "API type is required."))
+        }
+        let environment = profile.apiKeyEnvironment?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let pattern = "^[A-Z][A-Z0-9_]{0,127}$"
+        if environment.range(of: pattern, options: .regularExpression) == nil {
+            issues.append(.init(field: .apiKeyEnvironment, message: "API key environment variable is required."))
         }
         return issues
     }

@@ -31,7 +31,18 @@ struct ProviderSidebar: View {
                     }
                     .buttonStyle(.plain)
                 }
-            }.padding(.horizontal, 8)
+            }
+            .padding(.horizontal, 8)
+
+            Button { model.createCustomProvider() } label: {
+                Label(localization.string("button.add_provider"), systemImage: "plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+            }
+            .buttonStyle(.bordered)
+            .padding(.horizontal, 18)
+            .disabled(model.isBusy)
             Spacer()
             Picker("", selection: $localization.language) {
                 ForEach(AppLanguage.allCases, id: \.self) { language in
@@ -47,6 +58,9 @@ struct ProviderSidebar: View {
     }
 
     private func icon(for id: ProviderID) -> String {
-        switch id { case .openAI: return "person.crop.circle.badge.checkmark"; case .qilin: return "sparkles"; case .vectorEngine: return "point.3.connected.trianglepath.dotted" }
+        if id == .openAI { return "person.crop.circle.badge.checkmark" }
+        if id == .qilin { return "sparkles" }
+        if id == .vectorEngine { return "point.3.connected.trianglepath.dotted" }
+        return "network"
     }
 }

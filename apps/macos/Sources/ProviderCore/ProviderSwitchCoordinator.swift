@@ -30,7 +30,10 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
         self.backupService = backupService
     }
 
-    public func apply(target profile: ProviderProfile) async -> SwitchResult {
+    public func apply(
+        target profile: ProviderProfile,
+        availableProfiles: [ProviderProfile] = ProviderDefaults.all
+    ) async -> SwitchResult {
         let issues = ProviderValidator.validate(profile)
         guard issues.isEmpty else {
             return SwitchResult(succeeded: false, phase: .validating, diagnostics: nil, backup: nil, message: issues.map(\.message).joined(separator: " "))
@@ -38,13 +41,15 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
 
         let history = HistorySyncService(codexHome: codexHome)
         var backup: BackupManifest?
-        var previousKeyProvider: ProviderID = .openAI
+        var previousProfile = ProviderDefaults.profile(for: .openAI)
         do {
             let lock = try SwitchLock.acquire(in: codexHome)
             defer { try? lock.release() }
             let before = try history.snapshot()
             if let raw = try CodexConfigService().read(from: codexHome.appendingPathComponent("config.toml")).activeProvider,
-               let id = ProviderID(rawValue: raw) { previousKeyProvider = id }
+               let profile = availableProfiles.first(where: { $0.configProviderID == raw }) {
+                previousProfile = profile
+            }
             backup = try backupService.create(codexHome: codexHome)
             try await chatGPT.quit()
             try await chatGPT.waitUntilQuiescent()
@@ -54,7 +59,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
             }
             try CodexConfigService().apply(profile: profile, to: codexHome.appendingPathComponent("config.toml"))
             try history.synchronize(provider: profile.id)
-            try chatGPT.setEnvironment(provider: profile.id, key: key)
+            try chatGPT.setEnvironment(profile: profile, key: key)
             let after = try history.snapshot()
             try history.verify(before: before, after: after)
             try await chatGPT.launch()
@@ -66,7 +71,8 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
             }
             do {
                 try backupService.restore(backup, to: codexHome)
-                try chatGPT.setEnvironment(provider: previousKeyProvider, key: previousKeyProvider == .openAI ? nil : try keychain.read(provider: previousKeyProvider))
+                let previousKey = previousProfile.isBuiltIn ? nil : try keychain.read(provider: previousProfile.id)
+                try chatGPT.setEnvironment(profile: previousProfile, key: previousKey)
                 try await chatGPT.launch()
                 return SwitchResult(succeeded: false, phase: .recovering, diagnostics: try? DiagnosticsService(codexHome: codexHome).inspect(), backup: backup, message: "Switch failed and the previous state was restored: \(error)")
             } catch let recoveryError {

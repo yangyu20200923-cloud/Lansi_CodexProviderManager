@@ -34,7 +34,7 @@ public final class CodexConfigService: @unchecked Sendable {
     public func apply(profile: ProviderProfile, to url: URL) throws {
         var config = try read(from: url)
         config.rawText = try updated(text: config.rawText, profile: profile)
-        config.activeProvider = profile.id.rawValue
+        config.activeProvider = profile.configProviderID
         try AtomicFile.replace(url, with: Data(config.rawText.utf8))
     }
 
@@ -75,7 +75,7 @@ public final class CodexConfigService: @unchecked Sendable {
             try upsertTable("history", key: "persistence", value: "\"save-all\"")
             func upsertManagedProvider(_ id: ProviderID) throws {
                 let managedProfile = id == profile.id ? profile : ProviderDefaults.profile(for: id)
-                let providerHeader = "[model_providers.\(id.rawValue)]"
+                let providerHeader = "[model_providers.\(managedProfile.configProviderID)]"
                 let headerIndex: Int
                 if let existing = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == providerHeader }) {
                     headerIndex = existing
@@ -98,30 +98,34 @@ public final class CodexConfigService: @unchecked Sendable {
                         let value: String?
                         switch key {
                         case "name":
-                            value = id == .qilin ? "Qilin OpenAI-compatible API" : "VectorEngine OpenAI-compatible API"
+                            value = id == .qilin ? "Qilin OpenAI-compatible API" : id == .vectorEngine ? "VectorEngine OpenAI-compatible API" : managedProfile.displayName
                         case "base_url": value = managedProfile.baseURL
                         case "wire_api": value = managedProfile.wireAPI
-                        default: value = id == .qilin ? "QILIN_API_KEY" : "VECTORENGINE_API_KEY"
+                        default: value = managedProfile.apiKeyEnvironment
                         }
                         if let value { lines[index] = "\(key) = \(Self.quote(value))" }
                     }
                 }
                 let required: [(String, String?)] = [
-                    ("name", id == .qilin ? "Qilin OpenAI-compatible API" : "VectorEngine OpenAI-compatible API"),
+                    ("name", id == .qilin ? "Qilin OpenAI-compatible API" : id == .vectorEngine ? "VectorEngine OpenAI-compatible API" : managedProfile.displayName),
                     ("base_url", managedProfile.baseURL),
                     ("wire_api", managedProfile.wireAPI),
-                    ("env_key", id == .qilin ? "QILIN_API_KEY" : "VECTORENGINE_API_KEY")
+                    ("env_key", managedProfile.apiKeyEnvironment)
                 ]
                 var insertion = blockEnd
                 for (key, value) in required where !seen.contains(key) {
                     if let value { lines.insert("\(key) = \(Self.quote(value))", at: insertion); insertion += 1 }
                 }
             }
-            try upsertManagedProvider(.qilin)
-            try upsertManagedProvider(.vectorEngine)
+            if profile.id == .qilin || profile.id == .vectorEngine {
+                try upsertManagedProvider(.qilin)
+                try upsertManagedProvider(.vectorEngine)
+            } else {
+                try upsertManagedProvider(profile.id)
+            }
         }
 
-        let modelProvider = "model_provider = \"\(profile.id.rawValue)\""
+        let modelProvider = "model_provider = \"\(profile.configProviderID)\""
         let firstTable = lines.firstIndex { $0.trimmingCharacters(in: .whitespaces).hasPrefix("[") } ?? lines.count
         let modelProviderIndices = lines.indices.filter {
             guard $0 < firstTable else { return false }

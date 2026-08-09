@@ -37,14 +37,16 @@ struct ProviderFormView: View {
             GridRow { label("field.display_name"); TextField(localization.string("placeholder.name"), text: binding(\.displayName)); defaultText(ProviderDefaults.profile(for: model.selectedID).displayName) }
             GridRow { label("field.base_url"); TextField(localization.string("placeholder.https"), text: optionalBinding(\.baseURL)).disabled(model.selectedProfile.isBuiltIn); defaultText(ProviderDefaults.profile(for: model.selectedID).baseURL ?? localization.string("default.managed_chatgpt")) }
             GridRow { label("field.api_type"); apiTypeControl; defaultText(ProviderDefaults.profile(for: model.selectedID).wireAPI ?? localization.string("default.built_in")) }
-            GridRow { label("field.model"); TextField(localization.string("placeholder.model"), text: optionalBinding(\.model)).disabled(true); defaultText(ProviderDefaults.profile(for: model.selectedID).model ?? localization.string("default.chatgpt")) }
+            GridRow { label("field.api_key_environment"); TextField("EXAMPLE_PROVIDER_API_KEY", text: optionalBinding(\.apiKeyEnvironment)).disabled(model.selectedProfile.isBuiltIn); Color.clear.frame(width: 180, height: 1) }
+            GridRow { label("field.model"); TextField(localization.string("placeholder.model"), text: optionalBinding(\.model)).disabled(model.selectedProfile.isBuiltIn); defaultText(ProviderDefaults.profile(for: model.selectedID).model ?? localization.string("default.chatgpt")) }
             GridRow {
                 label("field.api_key")
                 SecureField(localization.string(model.selectedProfile.hasStoredKey ? "key.saved_placeholder" : "key.enter_placeholder"), text: $model.apiKeyDraft).disabled(model.selectedProfile.isBuiltIn)
                 HStack {
                     Text(localization.string(model.selectedProfile.isBuiltIn ? "key.chatgpt_login" : (model.selectedProfile.hasStoredKey ? "key.saved" : "key.not_saved")))
                         .font(.caption).foregroundStyle(.secondary)
-                    if !model.selectedProfile.isBuiltIn, EnvironmentKeyImporter().candidate(for: model.selectedID) != nil {
+                    if !model.selectedProfile.isBuiltIn,
+                       EnvironmentKeyImporter().candidate(for: model.selectedProfile.apiKeyEnvironment, provider: model.selectedID) != nil {
                         Button(localization.string("button.import")) { model.importEnvironmentKey() }.controlSize(.small)
                     }
                 }

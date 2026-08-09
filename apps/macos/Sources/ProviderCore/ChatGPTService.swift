@@ -30,11 +30,10 @@ public final class ChatGPTService: @unchecked Sendable {
         try run("/usr/bin/open", ["-a", "ChatGPT"])
     }
 
-    public func setEnvironment(provider: ProviderID, key: String?) throws {
+    public func setEnvironment(profile: ProviderProfile, key: String?) throws {
         let variables = ["QILIN_API_KEY", "VECTORENGINE_API_KEY"]
         for variable in variables { try run("/bin/launchctl", ["unsetenv", variable], acceptFailure: true) }
-        guard provider != .openAI, let key else { return }
-        let variable = provider == .qilin ? "QILIN_API_KEY" : "VECTORENGINE_API_KEY"
+        guard !profile.isBuiltIn, let key, let variable = profile.apiKeyEnvironment else { return }
         try run("/bin/launchctl", ["setenv", variable, key])
     }
 

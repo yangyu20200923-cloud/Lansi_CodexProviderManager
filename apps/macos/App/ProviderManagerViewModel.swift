@@ -17,15 +17,17 @@ final class ProviderManagerViewModel: ObservableObject {
 
     init() {
         var loaded = (try? store.load()) ?? ProfileSet()
-        for id in [ProviderID.qilin, .vectorEngine] {
-            if let index = loaded.profiles.firstIndex(where: { $0.id == id }) {
-                loaded.profiles[index].hasStoredKey = (try? keychain.read(provider: id))?.isEmpty == false
-            }
+        for index in loaded.profiles.indices where !loaded.profiles[index].isBuiltIn {
+            let id = loaded.profiles[index].id
+            loaded.profiles[index].hasStoredKey = (try? keychain.read(provider: id))?.isEmpty == false
+        }
+        if !loaded.profiles.contains(where: { $0.id == loaded.activeProvider }) {
+            loaded.activeProvider = .openAI
         }
         if let inspected = try? DiagnosticsService(codexHome: codexHome).inspect(),
            let active = inspected.activeProvider,
-           let id = ProviderID(rawValue: active) {
-            loaded.activeProvider = id
+           let profile = loaded.profiles.first(where: { $0.configProviderID == active }) {
+            loaded.activeProvider = profile.id
         }
         profileSet = loaded
         selectedID = loaded.activeProvider
@@ -45,7 +47,39 @@ final class ProviderManagerViewModel: ObservableObject {
         validate()
     }
 
+    func createCustomProvider() {
+        let id = ProviderID.custom()
+        profileSet.profiles.append(
+            ProviderProfile(
+                id: id,
+                displayName: "New Provider",
+                baseURL: nil,
+                wireAPI: "responses",
+                apiKeyEnvironment: nil,
+                model: nil,
+                isBuiltIn: false
+            )
+        )
+        select(id)
+        statusMessage = "Fill in the Provider details, then save or apply it."
+    }
+
+    func saveProfile() {
+        validate()
+        guard validationIssues.isEmpty else {
+            statusMessage = "Fix validation errors first."
+            return
+        }
+        do {
+            try store.save(profileSet)
+            statusMessage = "Provider saved."
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
     func restoreDefaults() {
+        guard selectedID.isBuiltIn else { return }
         let storedKey = profileSet.profiles[selectedIndex].hasStoredKey
         var profile = ProviderDefaults.profile(for: selectedID)
         profile.hasStoredKey = storedKey
@@ -54,9 +88,12 @@ final class ProviderManagerViewModel: ObservableObject {
     }
 
     func importEnvironmentKey() {
-        guard let candidate = EnvironmentKeyImporter().candidate(for: selectedID) else { return }
+        guard let candidate = EnvironmentKeyImporter().candidate(
+            for: selectedProfile.apiKeyEnvironment,
+            provider: selectedID
+        ) else { return }
         apiKeyDraft = candidate.value
-            statusMessage = "Environment key is ready to save to Keychain."
+        statusMessage = "Environment key is ready to save to Keychain."
     }
 
     func testConnection() async {
@@ -99,7 +136,10 @@ final class ProviderManagerViewModel: ObservableObject {
                 apiKeyDraft = ""
             }
             try store.save(profileSet)
-            let result = await ProviderSwitchCoordinator(codexHome: codexHome, keychain: keychain).apply(target: selectedProfile)
+            let result = await ProviderSwitchCoordinator(codexHome: codexHome, keychain: keychain).apply(
+                target: selectedProfile,
+                availableProfiles: profileSet.profiles
+            )
             statusMessage = result.message
             diagnostics = result.diagnostics
             if result.succeeded {

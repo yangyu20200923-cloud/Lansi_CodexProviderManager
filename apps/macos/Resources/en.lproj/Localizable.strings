@@ -10,6 +10,7 @@
 "field.display_name" = "Display Name";
 "field.base_url" = "Base URL";
 "field.api_type" = "API Type";
+"field.api_key_environment" = "API Key Environment";
 "field.model" = "Model";
 "field.api_key" = "API Key";
 "placeholder.name" = "Name";
@@ -24,6 +25,8 @@
 "key.saved_placeholder" = "Saved in Keychain";
 "key.enter_placeholder" = "Enter API Key";
 "button.import" = "Import";
+"button.add_provider" = "Add Provider";
+"button.save_provider" = "Save Provider";
 "button.test_connection" = "Test Connection";
 "button.restore_defaults" = "Restore Defaults";
 "button.apply_restart" = "Apply and Restart ChatGPT";

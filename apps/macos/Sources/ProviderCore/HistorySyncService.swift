@@ -52,7 +52,7 @@ public final class HistorySyncService: @unchecked Sendable {
         )
     }
 
-    public func synchronize(provider: ProviderID) throws {
+    public func synchronize(provider _: ProviderID) throws {
         let dbURL = codexHome.appendingPathComponent("state_5.sqlite")
         var db: OpaquePointer?
         guard sqlite3_open_v2(dbURL.path, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK, let db else {
@@ -61,7 +61,6 @@ public final class HistorySyncService: @unchecked Sendable {
         defer { sqlite3_close(db) }
         guard sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else { throw queryError(db) }
         do {
-            try execute("UPDATE threads SET model_provider = ? WHERE model_provider IS NULL OR model_provider <> ?", bindings: [provider.rawValue, provider.rawValue], db: db)
             try execute("UPDATE threads SET preview = title WHERE preview = '' AND title <> ''", bindings: [], db: db)
             guard sqlite3_exec(db, "COMMIT", nil, nil, nil) == SQLITE_OK else { throw queryError(db) }
         } catch {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -99,3 +100,64 @@ def save_catalog(path: Path, catalog: dict[str, object]) -> None:
     finally:
         if temporary_path and temporary_path.exists():
             temporary_path.unlink()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--catalog", type=Path, required=True)
+    parser.add_argument("--id")
+    parser.add_argument("--name")
+    parser.add_argument("--base-url")
+    parser.add_argument("--wire-api")
+    parser.add_argument("--api-key-env")
+    parser.add_argument("--model")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--remove", action="store_true")
+    mode.add_argument("--set-enabled", choices=("true", "false"))
+    mode.add_argument("--export", dest="export_path", type=Path)
+    mode.add_argument("--import-file", type=Path)
+    args = parser.parse_args()
+    catalog = load_catalog(args.catalog) if args.catalog.exists() else {"profiles": []}
+    if args.export_path is not None:
+        if not args.id: parser.error("export requires --id")
+        profile = next((item for item in catalog["profiles"] if item["id"] == args.id), None)
+        if profile is None: parser.error("profile id was not found")
+        save_catalog(args.export_path, {"profiles": [profile]})
+        print(json.dumps({"exportedProfileId": profile["id"]}, ensure_ascii=False))
+        return 0
+    if args.import_file is not None:
+        imported = load_catalog(args.import_file)["profiles"]
+        if not imported:
+            parser.error("import file does not contain profiles")
+        imported_ids = [profile["id"] for profile in imported]
+        catalog["profiles"] = [
+            item for item in catalog["profiles"] if item["id"] not in set(imported_ids)
+        ] + imported
+        save_catalog(args.catalog, catalog)
+        print(json.dumps({"importedProfileIds": imported_ids}, ensure_ascii=False))
+        return 0
+    if not args.id: parser.error("upsert, remove, or set-enabled requires --id")
+    if args.remove:
+        catalog["profiles"] = [item for item in catalog["profiles"] if item["id"] != args.id]
+        save_catalog(args.catalog, catalog)
+        return 0
+    if args.set_enabled is not None:
+        matched = False
+        for profile in catalog["profiles"]:
+            if profile["id"] == args.id:
+                profile["enabled"] = args.set_enabled == "true"
+                matched = True
+        if not matched:
+            parser.error("profile id was not found")
+        save_catalog(args.catalog, catalog)
+        return 0
+    if not all((args.name, args.base_url, args.wire_api, args.api_key_env, args.model)):
+        parser.error("upsert requires name, base-url, wire-api, api-key-env, and model")
+    profile = {"id": args.id, "name": args.name, "enabled": True, "authMode": "api_key", "baseUrl": args.base_url, "wireApi": args.wire_api, "apiKeyEnv": args.api_key_env, "model": args.model}
+    catalog["profiles"] = [item for item in catalog["profiles"] if item["id"] != args.id] + [profile]
+    save_catalog(args.catalog, catalog)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

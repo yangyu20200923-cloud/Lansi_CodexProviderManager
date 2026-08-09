@@ -1,6 +1,9 @@
 # Synthetic fixture. Do not replace with a user config.
-model = "fixture-model"
-model_provider = "custom"
+model = "gpt-5.6-sol"
+model_provider = "qilin"
+
+model_reasoning_effort = "xhigh"
+review_model = "gpt-5.5"
 
 [model_providers.custom]
 name = "Synthetic provider"
@@ -12,3 +15,18 @@ enabled = true
 
 [mcp_servers.fixture]
 command = "fixture-command"
+
+[history]
+persistence = "save-all"
+
+[model_providers.qilin]
+name = "Qilin OpenAI-compatible API"
+base_url = "https://www.qilinapi.com/v1"
+wire_api = "responses"
+env_key = "QILIN_API_KEY"
+
+[model_providers.vectorengine]
+name = "VectorEngine OpenAI-compatible API"
+base_url = "https://api.vectorengine.cn/v1"
+wire_api = "responses"
+env_key = "VECTORENGINE_API_KEY"

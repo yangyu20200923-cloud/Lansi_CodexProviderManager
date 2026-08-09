@@ -14,7 +14,7 @@ public enum ProviderDefaults {
             return ProviderProfile(
                 id: .qilin,
                 displayName: "Qilin",
-                baseURL: "https://www.qilinapi.com",
+                baseURL: "https://www.qilinapi.com/v1",
                 wireAPI: "responses",
                 model: "gpt-5.5",
                 isBuiltIn: false

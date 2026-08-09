@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import CryptoKit
 import XCTest
 @testable import ProviderCore
 
@@ -56,6 +57,8 @@ final class BackupServiceTests: XCTestCase {
         try service.restore(manifest, to: home)
 
         XCTAssertEqual(try String(contentsOf: config, encoding: .utf8), "model_provider = \"custom\"\n")
+        XCTAssertEqual(sha256(try Data(contentsOf: config)), manifest.checksums["config.toml"])
+        XCTAssertEqual(sha256(try Data(contentsOf: database)), manifest.checksums["state_5.sqlite"])
         XCTAssertEqual(sqlite3_open(database.path, &connection), SQLITE_OK)
         defer { sqlite3_close(connection) }
         var statement: OpaquePointer?
@@ -63,5 +66,9 @@ final class BackupServiceTests: XCTestCase {
         defer { sqlite3_finalize(statement) }
         XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
         XCTAssertEqual(sqlite3_column_int(statement, 0), 1)
+    }
+
+    private func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

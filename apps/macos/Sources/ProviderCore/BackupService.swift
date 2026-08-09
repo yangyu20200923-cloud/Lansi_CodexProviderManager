@@ -80,6 +80,13 @@ public final class BackupService: @unchecked Sendable {
             let target = codexHome.appendingPathComponent(name)
             try AtomicFile.replace(target, with: Data(contentsOf: source))
         }
+        for name in manifest.files where name == "config.toml" || name == "state_5.sqlite" {
+            guard let expected = manifest.checksums[name] else { continue }
+            let target = codexHome.appendingPathComponent(name)
+            guard Self.sha256(try Data(contentsOf: target)) == expected else {
+                throw BackupError.checksumMismatch(name)
+            }
+        }
     }
 
     private func prune(root: URL) throws {

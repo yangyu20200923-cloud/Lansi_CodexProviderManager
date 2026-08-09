@@ -7,6 +7,7 @@ public enum BackupError: Error {
 
 public struct BackupManifest: Codable, Equatable, Sendable {
     public let directory: URL
+    public var backupID: String { directory.lastPathComponent }
     public let createdAt: Date
     public let files: [String]
     public var isPinned: Bool

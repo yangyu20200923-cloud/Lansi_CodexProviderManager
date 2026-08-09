@@ -15,4 +15,16 @@ final class SwitchLockTests: XCTestCase {
         let second = try SwitchLock.acquire(in: root, ownerID: "second-owner")
         try second.release()
     }
+
+    func testBackupManifestExposesOpaqueBackupID() {
+        let manifest = BackupManifest(
+            directory: URL(fileURLWithPath: "/synthetic/home/backups/opaque-backup-id"),
+            createdAt: Date(),
+            files: [],
+            isPinned: false
+        )
+
+        XCTAssertEqual(manifest.backupID, "opaque-backup-id")
+        XCTAssertFalse(manifest.backupID.contains("/"))
+    }
 }

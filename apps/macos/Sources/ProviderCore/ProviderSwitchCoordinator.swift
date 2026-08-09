@@ -68,7 +68,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
                 try await chatGPT.launch()
                 return SwitchResult(succeeded: false, phase: .recovering, diagnostics: try? DiagnosticsService(codexHome: codexHome).inspect(), backup: backup, message: "Switch failed and the previous state was restored: \(error)")
             } catch let recoveryError {
-                return SwitchResult(succeeded: false, phase: .recovering, diagnostics: nil, backup: backup, message: "Switch and automatic recovery failed. Backup: \(backup.directory.path). Error: \(recoveryError)")
+                return SwitchResult(succeeded: false, phase: .recovering, diagnostics: nil, backup: backup, message: "Switch and automatic recovery failed. Backup: \(backup.backupID). Error: \(recoveryError)")
             }
         }
     }

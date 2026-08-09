@@ -102,6 +102,7 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(result["synced_threads"], 1)
         self.assertTrue(Path(result["config_backup"]).exists())
         self.assertTrue(Path(result["state_backup"]).exists())
+        self.assertTrue(Path(result["backup_manifest"]).exists())
         self.assertIn('model_provider = "vectorengine"', self.config.read_text(encoding="utf-8"))
         with closing(sqlite3.connect(self.state)) as connection:
             provider, preview = connection.execute(

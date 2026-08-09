@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from contextlib import closing
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -194,6 +195,10 @@ def _backup_database(source_path: Path, backup_path: Path) -> None:
             source.backup(destination)
 
 
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def _acquire_lock(lock_dir: Path, timeout_seconds: float = 10.0) -> None:
     deadline = time.monotonic() + timeout_seconds
     while True:
@@ -247,6 +252,7 @@ def switch_provider(
         "changed": rendered != original,
         "config_backup": None,
         "state_backup": None,
+        "backup_manifest": None,
         "synced_threads": 0,
         "repaired_previews": 0,
         "verified_config": False,
@@ -271,6 +277,14 @@ def switch_provider(
             state_backup = backup_dir / f"state-{timestamp}.sqlite"
             _backup_database(state_db_path, state_backup)
             result["state_backup"] = str(state_backup)
+
+        artifacts = [config_backup] + ([state_backup] if state_backup else [])
+        manifest_path = backup_dir / f"manifest-{timestamp}.json"
+        manifest_path.write_text(
+            json.dumps({"files": {path.name: _sha256(path) for path in artifacts}}, sort_keys=True),
+            encoding="utf-8",
+        )
+        result["backup_manifest"] = str(manifest_path)
 
         state_connection: sqlite3.Connection | None = None
         temp_path: Path | None = None

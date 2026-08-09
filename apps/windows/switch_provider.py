@@ -256,8 +256,8 @@ def switch_provider(
         "provider": provider,
         "display_name": definition["display_name"],
         "env_key": definition["env_key"],
-        "config": str(config_path),
-        "state_db": str(state_db_path) if state_db_path else None,
+        "config": config_path.name,
+        "state_db": state_db_path.name if state_db_path else None,
         "dry_run": dry_run,
         "changed": rendered != original,
         "config_backup": None,
@@ -417,9 +417,9 @@ def status(config_path: Path, state_db_path: Path | None) -> dict[str, object]:
         if name.startswith("model_providers.")
     )
     return {
-        "config": str(config_path),
+        "config": config_path.name,
         "config_exists": config_path.exists(),
-        "state_db": str(state_db_path) if state_db_path else None,
+        "state_db": state_db_path.name if state_db_path else None,
         "state_db_exists": bool(state_db_path and state_db_path.exists()),
         "current_provider": current,
         "inline_token_detected": inline_token_detected,

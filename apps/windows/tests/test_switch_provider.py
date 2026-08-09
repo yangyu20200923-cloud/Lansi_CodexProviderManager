@@ -9,7 +9,7 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT))
 
-from switch_provider import PROVIDERS, render_config, restore_latest, switch_provider
+from switch_provider import PROVIDERS, render_config, restore_latest, status, switch_provider
 
 
 SAMPLE_CONFIG = '''model = "old-model"
@@ -123,6 +123,16 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(self.config.read_bytes(), original_config)
         self.assertEqual(self.state.read_bytes(), original_state)
         self.assertFalse((self.root / "backups").exists())
+
+    def test_switch_and_status_redact_config_and_database_paths(self):
+        switch = switch_provider("qilin", self.config, self.state)
+        current_status = status(self.config, self.state)
+
+        for result in (switch, current_status):
+            self.assertNotIn(str(self.root), result["config"])
+            self.assertNotIn(str(self.root), result["state_db"])
+        self.assertEqual(switch["config"], "config.toml")
+        self.assertEqual(switch["state_db"], "state_5.sqlite")
 
     def test_restore_latest_restores_matching_config_and_database(self):
         switch = switch_provider("qilin", self.config, self.state)

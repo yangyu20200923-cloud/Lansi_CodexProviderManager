@@ -199,6 +199,16 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _verify_backup_manifest(manifest_path: Path, artifacts: list[Path]) -> None:
+    try:
+        expected = json.loads(manifest_path.read_text(encoding="utf-8"))["files"]
+    except (OSError, KeyError, json.JSONDecodeError) as error:
+        raise RuntimeError("Backup manifest is missing or invalid") from error
+    for artifact in artifacts:
+        if not artifact.exists() or expected.get(artifact.name) != _sha256(artifact):
+            raise RuntimeError(f"Backup verification failed: {artifact.name}")
+
+
 def _acquire_lock(lock_dir: Path, timeout_seconds: float = 10.0) -> None:
     deadline = time.monotonic() + timeout_seconds
     while True:
@@ -363,6 +373,8 @@ def restore_latest(config_path: Path, state_db_path: Path | None) -> dict[str, o
     config_backup = backups[0]
     timestamp = config_backup.stem.removeprefix("config-")
     state_backup = backup_dir / f"state-{timestamp}.sqlite"
+    artifacts = [config_backup] + ([state_backup] if state_backup.exists() else [])
+    _verify_backup_manifest(backup_dir / f"manifest-{timestamp}.json", artifacts)
     lock_dir = config_path.parent / ".windows-provider-switch.lock"
     _acquire_lock(lock_dir)
     try:

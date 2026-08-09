@@ -1,3 +1,3 @@
 # Configuration Fixtures
 
-These files are synthetic. While TOML ownership is preserve-only, both expected outputs must remain byte-identical to `base-config.toml`. Future managed-field tests require an official OpenAI source before changing expected output.
+These files are synthetic. `expected-openai.toml` preserves the base configuration byte-for-byte. `expected-compatible.toml` records the approved compatibility-managed Provider fields and must match both platform renderers exactly. Unknown fields and tables remain preserved; new managed fields require an accessible official OpenAI source.

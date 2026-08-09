@@ -37,4 +37,31 @@ final class BackupServiceTests: XCTestCase {
 
         XCTAssertThrowsError(try service.restore(manifest, to: home))
     }
+
+    func testRestoreRecoversSyntheticConfigAndSQLiteState() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: home) }
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let config = home.appendingPathComponent("config.toml")
+        try "model_provider = \"custom\"\n".write(to: config, atomically: true, encoding: .utf8)
+        let database = home.appendingPathComponent("state_5.sqlite")
+        var connection: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(database.path, &connection), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(connection, "CREATE TABLE threads (id TEXT); INSERT INTO threads VALUES ('fixture-thread');", nil, nil, nil), SQLITE_OK)
+        sqlite3_close(connection)
+
+        let service = BackupService(backupRoot: home.appendingPathComponent("backups"))
+        let manifest = try service.create(codexHome: home)
+        try "model_provider = \"damaged\"\n".write(to: config, atomically: true, encoding: .utf8)
+        try service.restore(manifest, to: home)
+
+        XCTAssertEqual(try String(contentsOf: config, encoding: .utf8), "model_provider = \"custom\"\n")
+        XCTAssertEqual(sqlite3_open(database.path, &connection), SQLITE_OK)
+        defer { sqlite3_close(connection) }
+        var statement: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(connection, "SELECT COUNT(*) FROM threads", -1, &statement, nil), SQLITE_OK)
+        defer { sqlite3_finalize(statement) }
+        XCTAssertEqual(sqlite3_step(statement), SQLITE_ROW)
+        XCTAssertEqual(sqlite3_column_int(statement, 0), 1)
+    }
 }

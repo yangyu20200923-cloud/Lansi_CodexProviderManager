@@ -151,6 +151,19 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(self.state.read_bytes(), original_state)
         self.assertFalse((self.root / "backups").exists())
 
+    def test_switch_rejects_unsupported_schema_before_creating_backups(self):
+        self.state.unlink()
+        with closing(sqlite3.connect(self.state)) as connection:
+            connection.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT)")
+            connection.commit()
+        original_config = self.config.read_bytes()
+
+        with self.assertRaises(RuntimeError):
+            switch_provider("qilin", self.config, self.state)
+
+        self.assertEqual(self.config.read_bytes(), original_config)
+        self.assertFalse((self.root / "backups").exists())
+
     def test_switch_and_status_redact_config_and_database_paths(self):
         switch = switch_provider("qilin", self.config, self.state)
         current_status = status(self.config, self.state)

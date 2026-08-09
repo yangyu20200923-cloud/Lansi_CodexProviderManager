@@ -309,6 +309,14 @@ def _thread_columns(connection: sqlite3.Connection) -> set[str]:
     return {row[1] for row in connection.execute("PRAGMA table_info(threads)")}
 
 
+def _validate_state_db_schema(state_db_path: Path | None) -> None:
+    if not state_db_path or not state_db_path.exists():
+        return
+    with closing(sqlite3.connect(state_db_path, timeout=10)) as connection:
+        if "model_provider" not in _thread_columns(connection):
+            raise RuntimeError("The threads table has no model_provider column")
+
+
 def switch_provider(
     provider: str,
     config_path: Path,
@@ -342,6 +350,7 @@ def switch_provider(
     if dry_run:
         return result
 
+    _validate_state_db_schema(state_db_path)
     _assert_codex_quiescent()
     config_dir = config_path.parent
     backup_dir = config_dir / "backups" / "windows-provider-switch"

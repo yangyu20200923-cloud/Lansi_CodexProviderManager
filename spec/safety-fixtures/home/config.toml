@@ -1,0 +1,8 @@
+# Synthetic safety fixture. Do not replace with a user config.
+model_provider = "custom"
+
+[plugins.'fixture@local']
+enabled = true
+
+[mcp_servers.fixture]
+command = "fixture-command"

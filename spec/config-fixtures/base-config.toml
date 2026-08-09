@@ -1,0 +1,14 @@
+# Synthetic fixture. Do not replace with a user config.
+model = "fixture-model"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "Synthetic provider"
+base_url = "https://api.example.invalid/v1"
+wire_api = "responses"
+
+[plugins.'fixture@local']
+enabled = true
+
+[mcp_servers.fixture]
+command = "fixture-command"

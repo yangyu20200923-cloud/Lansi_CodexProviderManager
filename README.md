@@ -1,15 +1,5 @@
 # Lansi_CodexProviderManager
 
-## v0.1.0-beta.1
-
-This beta supports verified switching and recovery for the built-in OpenAI/ChatGPT, Qilin, and VectorEngine profiles on one existing `CODEX_HOME`. It is unsigned on macOS and has not completed real-provider compatibility validation.
-
-此 Beta 支持在同一既有 `CODEX_HOME` 中，对内置 OpenAI/ChatGPT、Qilin 与 VectorEngine Profile 进行经验证的切换与恢复。macOS 产物为未签名 Beta，尚未完成真实 Provider 兼容性验证。
-
-The Windows non-secret Profile catalog data layer is included for the next beta milestone, but custom profile editing has not yet been connected to the Windows or macOS GUI. Do not rely on it for switching in v0.1.0-beta.1.
-
-Windows 的非秘密 Profile catalog 数据层已包含在下一里程碑基础中，但自定义 Profile 编辑尚未接入 Windows 或 macOS GUI。请勿在 v0.1.0-beta.1 中依赖其进行切换。
-
 兰司观察 Codex_Provider 切换器 is a local, cross-platform provider-profile manager for an existing Codex home.
 
 兰司观察 Codex_Provider 切换器是一个本地跨平台 Provider 配置管理工具，始终使用已有的 Codex 主目录。

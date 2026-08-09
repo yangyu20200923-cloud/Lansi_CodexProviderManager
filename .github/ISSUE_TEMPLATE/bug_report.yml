@@ -5,7 +5,7 @@ labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: "Do not include API keys, auth.json, session JSONL files, database files, or conversation content."
+      value: "Do not include API keys, auth.json, session JSONL files, database files, or conversation content. 请勿提交 API Key、auth.json、会话 JSONL、数据库文件或对话内容。"
   - type: input
     id: version
     attributes:

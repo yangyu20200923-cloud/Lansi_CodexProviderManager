@@ -9,3 +9,6 @@ rg -q '兰司观察 Codex_Provider 切换器' README.md
 rg -q 'apps/macos' README.md
 rg -q 'apps/windows' README.md
 rg -q 'not affiliated with or endorsed by OpenAI' README.md
+rg -q '本地跨平台' README.md
+rg -q '每个测试都必须使用' CONTRIBUTING.md
+rg -q '私下报告' SECURITY.md

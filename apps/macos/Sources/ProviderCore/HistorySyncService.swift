@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import CryptoKit
 
 private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -8,6 +9,8 @@ public struct HistorySnapshot: Equatable, Sendable {
     public let visibleThreads: Int
     public let sessionFileCount: Int
     public let extensionPaths: Set<String>
+    public let sessionHashes: [String: String]
+    public let extensionHashes: [String: String]
 }
 
 public enum HistorySyncError: Error, Equatable {
@@ -25,9 +28,7 @@ public final class HistorySyncService: @unchecked Sendable {
         let dbURL = codexHome.appendingPathComponent("state_5.sqlite")
         let total = try scalar("SELECT COUNT(*) FROM threads", database: dbURL)
         let visible = try scalar("SELECT COUNT(*) FROM threads WHERE COALESCE(archived, 0) = 0 AND preview <> ''", database: dbURL, fallback: total)
-        let sessionRoot = codexHome.appendingPathComponent("sessions")
-        let sessions = FileManager.default.enumerator(at: sessionRoot, includingPropertiesForKeys: nil)?
-            .compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }.count ?? 0
+        let sessionHashes = try fileHashes(in: codexHome.appendingPathComponent("sessions"), extension: "jsonl")
         var extensionNames = ["skills", "plugins", "mcp"].filter {
             FileManager.default.fileExists(atPath: codexHome.appendingPathComponent($0).path)
         }
@@ -35,7 +36,20 @@ public final class HistorySyncService: @unchecked Sendable {
            config.contains("[mcp_servers.") || config.contains("[mcp]") {
             extensionNames.append("mcp")
         }
-        return HistorySnapshot(totalThreads: total, visibleThreads: visible, sessionFileCount: sessions, extensionPaths: Set(extensionNames))
+        var extensionHashes: [String: String] = [:]
+        for name in ["skills", "plugins", "mcp"] {
+            for (path, hash) in try fileHashes(in: codexHome.appendingPathComponent(name)) {
+                extensionHashes["\(name)/\(path)"] = hash
+            }
+        }
+        return HistorySnapshot(
+            totalThreads: total,
+            visibleThreads: visible,
+            sessionFileCount: sessionHashes.count,
+            extensionPaths: Set(extensionNames),
+            sessionHashes: sessionHashes,
+            extensionHashes: extensionHashes
+        )
     }
 
     public func synchronize(provider: ProviderID) throws {
@@ -60,9 +74,26 @@ public final class HistorySyncService: @unchecked Sendable {
         guard before.totalThreads == after.totalThreads,
               after.visibleThreads >= before.visibleThreads,
               before.sessionFileCount == after.sessionFileCount,
-              before.extensionPaths == after.extensionPaths else {
+              before.extensionPaths == after.extensionPaths,
+              before.sessionHashes == after.sessionHashes,
+              before.extensionHashes == after.extensionHashes else {
             throw HistorySyncError.invariantChanged(before: before, after: after)
         }
+    }
+
+    private func fileHashes(in root: URL, extension: String? = nil) throws -> [String: String] {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [:] }
+        let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL }
+            .filter { url in
+                guard url.hasDirectoryPath == false else { return false }
+                return `extension`.map { url.pathExtension == $0 } ?? true
+            } ?? []
+        return try Dictionary(uniqueKeysWithValues: files.map { file in
+            let relative = file.path.replacingOccurrences(of: root.path + "/", with: "")
+            let hash = SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined()
+            return (relative, hash)
+        })
     }
 
     private func scalar(_ sql: String, database: URL, fallback: Int? = nil) throws -> Int {

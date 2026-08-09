@@ -133,6 +133,21 @@ class SwitchTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             restore_latest(self.config, self.state)
 
+    def test_restore_latest_recovers_valid_backups(self):
+        switch_provider("qilin", self.config, self.state)
+        self.config.write_text('model_provider = "damaged"\n', encoding="utf-8")
+        with closing(sqlite3.connect(self.state)) as connection:
+            connection.execute("UPDATE threads SET model_provider = 'damaged'")
+            connection.commit()
+
+        result = restore_latest(self.config, self.state)
+
+        self.assertTrue(result["restored"])
+        self.assertEqual(self.config.read_text(encoding="utf-8"), SAMPLE_CONFIG)
+        with closing(sqlite3.connect(self.state)) as connection:
+            provider = connection.execute("SELECT model_provider FROM threads WHERE id = 'one'").fetchone()[0]
+        self.assertEqual(provider, "custom")
+
 
 if __name__ == "__main__":
     unittest.main()

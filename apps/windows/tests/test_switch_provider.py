@@ -164,6 +164,34 @@ class SwitchTests(unittest.TestCase):
         self.assertEqual(self.config.read_bytes(), original_config)
         self.assertFalse((self.root / "backups").exists())
 
+    def test_switch_rejects_extension_mutation_and_recovers_config_and_database(self):
+        session = self.root / "sessions" / "2026" / "fixture.jsonl"
+        skill = self.root / "skills" / "fixture" / "SKILL.md"
+        plugin = self.root / "plugins" / "fixture" / "plugin.json"
+        mcp = self.root / "mcp" / "fixture.json"
+        for path, content in (
+            (session, '{"type":"synthetic"}\n'),
+            (skill, "synthetic skill\n"),
+            (plugin, '{"name":"fixture"}\n'),
+            (mcp, '{"command":"fixture"}\n'),
+        ):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        original_status = status
+
+        def mutate_extension(config_path, state_db_path):
+            skill.write_text("mutated\n", encoding="utf-8")
+            return original_status(config_path, state_db_path)
+
+        with patch("switch_provider.status", side_effect=mutate_extension):
+            with self.assertRaises(RuntimeError):
+                switch_provider("qilin", self.config, self.state)
+
+        self.assertEqual(self.config.read_text(encoding="utf-8"), SAMPLE_CONFIG)
+        with closing(sqlite3.connect(self.state)) as connection:
+            provider = connection.execute("SELECT model_provider FROM threads WHERE id = 'one'").fetchone()[0]
+        self.assertEqual(provider, "custom")
+
     def test_switch_and_status_redact_config_and_database_paths(self):
         switch = switch_provider("qilin", self.config, self.state)
         current_status = status(self.config, self.state)

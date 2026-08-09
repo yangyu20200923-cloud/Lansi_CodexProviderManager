@@ -212,6 +212,36 @@ def _sqlite_content_hash(path: Path) -> str:
     return hashlib.sha256(dump).hexdigest()
 
 
+def _file_hashes(root: Path, suffix: str | None = None) -> dict[str, str]:
+    if not root.is_dir():
+        return {}
+    return {
+        path.relative_to(root).as_posix(): _sha256(path)
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and (suffix is None or path.suffix == suffix)
+    }
+
+
+def _preservation_snapshot(config_dir: Path, state_db_path: Path | None) -> dict[str, object]:
+    thread_count = 0
+    if state_db_path and state_db_path.exists():
+        with closing(sqlite3.connect(f"file:{state_db_path}?mode=ro", uri=True)) as connection:
+            thread_count = connection.execute("SELECT COUNT(*) FROM threads").fetchone()[0]
+    return {
+        "thread_count": thread_count,
+        "sessions": _file_hashes(config_dir / "sessions", suffix=".jsonl"),
+        "extensions": {
+            name: _file_hashes(config_dir / name)
+            for name in ("skills", "plugins", "mcp")
+        },
+    }
+
+
+def _verify_preservation(before: dict[str, object], after: dict[str, object]) -> None:
+    if before != after:
+        raise RuntimeError("Conversation or extension preservation verification failed")
+
+
 def _verify_backup_manifest(manifest_path: Path, artifacts: list[Path]) -> None:
     try:
         expected = json.loads(manifest_path.read_text(encoding="utf-8"))["files"]
@@ -357,6 +387,7 @@ def switch_provider(
     lock_dir = config_dir / ".windows-provider-switch.lock"
     lock_owner = _acquire_lock(lock_dir)
     try:
+        preservation_before = _preservation_snapshot(config_dir, state_db_path)
         backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         config_backup = backup_dir / f"config-{timestamp}.toml"
@@ -414,6 +445,9 @@ def switch_provider(
             verification_status = status(config_path, state_db_path)
             if verification_status["current_provider"] != provider:
                 raise RuntimeError("Config verification failed after provider switch")
+            _verify_preservation(
+                preservation_before, _preservation_snapshot(config_dir, state_db_path)
+            )
             result["verified_config"] = True
             if state_connection is not None:
                 mismatched_threads = state_connection.execute(

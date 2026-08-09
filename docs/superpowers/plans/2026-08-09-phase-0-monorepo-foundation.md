@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Preserve existing application behavior during import and relocation.
+- Preserve existing application behavior during import and relocation. Non-functional whitespace cleanup is allowed before the baseline commit when required by repository checks.
 - Never read, stage, log, or test against a live Codex home, API key, token, backup, session JSONL, or user database.
 - Keep generated output, diagnostics, bytecode, databases, backups, and credentials ignored.
 - Use the approved names Lansi_CodexProviderManager and 兰司观察 Codex_Provider 切换器. Do not claim OpenAI or Codex affiliation.
@@ -103,7 +103,7 @@ Run:
     git diff --cached --check
     git commit -m "chore: import existing platform prototypes"
 
-Expected: source, tests, existing docs, and licenses are tracked; generated output and private data are not.
+Expected: source, tests, existing docs, and licenses are tracked; generated output and private data are not. If `git diff --cached --check` reports only pre-existing trailing whitespace or blank lines at EOF, remove only that whitespace, re-run the macOS suite and credential scan, then commit the cleaned baseline.
 
 ## Task 2: Relocate Applications Into apps/
 

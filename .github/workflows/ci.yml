@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  repository-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - run: bash scripts/check-repository-layout.sh
+      - run: bash scripts/check-project-docs.sh
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --disable-index-store
+        working-directory: apps/macos
+      - run: ./scripts/package-smoke.sh
+        working-directory: apps/macos
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: powershell
+        run: ./Test-Switcher.ps1
+        working-directory: apps/windows

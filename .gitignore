@@ -5,8 +5,8 @@ Thumbs.db
 # macOS SwiftPM build output and packaged applications
 apps/macos/.build/
 apps/macos/dist/
-CodexProviderManager/.build/
-CodexProviderManager/dist/
+apps/windows/__pycache__/
+apps/windows/tests/__pycache__/
 
 # Python and PowerShell development output
 __pycache__/

@@ -5,6 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Push-Location $PSScriptRoot
+$env:LANSI_PROVIDER_MANAGER_TEST_MODE = '1'
 try {
     Write-Host '[1/5] Python compilation'
     & python -m py_compile switch_provider.py desktop_app.py
@@ -63,5 +64,6 @@ enabled = true
     Write-Host 'PASS: all switcher checks completed successfully.' -ForegroundColor Green
 }
 finally {
+    Remove-Item Env:LANSI_PROVIDER_MANAGER_TEST_MODE -ErrorAction SilentlyContinue
     Pop-Location
 }

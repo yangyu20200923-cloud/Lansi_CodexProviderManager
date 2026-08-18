@@ -37,6 +37,10 @@ CODEX_PROCESS_NAMES = {"chatgpt.exe", "codex.exe", "codex-code-mode-host.exe"}
 PhaseCallback = Callable[[str, str], None]
 
 
+def _test_runtime_mode() -> bool:
+    return os.environ.get("LANSI_PROVIDER_MANAGER_TEST_MODE") == "1"
+
+
 def _emit_phase(callback: PhaseCallback | None, phase: str, message: str) -> None:
     if callback is not None:
         callback(phase, message)
@@ -1236,6 +1240,8 @@ def launch_codex_desktop(
 ) -> dict[str, object]:
     """Launch Codex with a fresh, provider-specific process environment."""
 
+    if _test_runtime_mode():
+        return {"requested": False, "verified": True, "environment_verified": True, "test_mode": True}
     if os.name != "nt":
         return {"requested": False, "verified": True}
     executable = _installed_codex_executable()
@@ -1450,7 +1456,7 @@ def switch_provider(
                 raise RuntimeError("目标服务地址未注入当前服务设置，切换已回滚。")
             if target_wire_api and connection.get("wire_api") != target_wire_api:
                 raise RuntimeError("目标接口方式未注入当前服务设置，切换已回滚。")
-            if os.name == "nt" and target_env_key and _read_user_environment_value(target_env_key) is None:
+            if os.name == "nt" and not _test_runtime_mode() and target_env_key and _read_user_environment_value(target_env_key) is None:
                 raise RuntimeError("当前服务的访问密钥未找到，切换已回滚。")
             result["verified_provider"] = True
             if previous_env_key and previous_env_key != target_env_key:

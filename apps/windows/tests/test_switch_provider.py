@@ -299,7 +299,9 @@ class SwitchTests(unittest.TestCase):
         executable = self.root / "Codex.exe"
         executable.write_text("fixture", encoding="utf-8")
         try:
-            with patch("switch_provider.os.name", "nt"), patch(
+            with patch.dict(os.environ, {"LANSI_PROVIDER_MANAGER_TEST_MODE": ""}), patch(
+                "switch_provider.os.name", "nt"
+            ), patch(
                 "switch_provider._installed_codex_executable", return_value=executable
             ), patch("switch_provider._codex_processes", side_effect=[(), ("Codex.exe",)]), patch(
                 "switch_provider.subprocess.Popen"

@@ -2,7 +2,7 @@
   "schema_version": 3,
   "project": "Lansi Codex Provider Manager",
   "governance_state": "ACTIVE",
-  "updated_at": "2026-08-18T06:24:12+00:00",
+  "updated_at": "2026-08-18T06:44:15+00:00",
   "sessions": [
     {
       "session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
@@ -20,30 +20,30 @@
       "role": "BRANCH",
       "status": "ACTIVE",
       "parent_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
-      "title": "LCP P2 LCP05 B1",
-      "active_acceptance_id": "LCP-05",
+      "title": "LCP P3 LCP06 B1",
+      "active_acceptance_id": "LCP-06",
       "mode": "VERIFY",
-      "scope": "LCP-05 release preflight: exact candidate committed; Mac artifact rebuilt; Windows artifact must be rebuilt on Windows from the same commit before push/release.",
+      "scope": "LCP-06: verify the exact committed open-source candidate, build/recovery documentation, artifact manifests, and no-secret evidence before any GitHub push or release publication.",
       "forbidden_actions": "No push, merge, deployment, release publication, credential exposure",
-      "observed_at": "2026-08-18T06:20:56+00:00",
+      "observed_at": "2026-08-18T06:38:25+00:00",
       "handoff": "handoffs/2026-08-17-lcp04-baseline-rebuild.md"
     }
   ],
-  "revision": 120,
+  "revision": 123,
   "current_main_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
   "program": {
-    "execution": "PAUSED",
-    "lifecycle": "PAUSED",
+    "execution": "CONTINUOUS",
+    "lifecycle": "RELEASE_CLOSE",
     "owner_session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
-    "current_phase_id": "P2",
-    "active_acceptance_id": "LCP-05",
+    "current_phase_id": "P3",
+    "active_acceptance_id": "LCP-06",
     "mode": "VERIFY",
-    "next_phase_id": "P2",
-    "next_acceptance_id": "LCP-05",
-    "candidate": "agent/lcp-phase0-rescue-20260810 release candidate; macOS DMG rebuilt and verified; Windows EXE/ZIP must be rebuilt on a Windows build machine from the final source commit.",
-    "pause_reason": "Windows/PyInstaller build environment is not available in this macOS workspace; the supplied Windows EXE/ZIP lacks exact commit provenance.",
+    "next_phase_id": "P3",
+    "next_acceptance_id": "LCP-01",
+    "candidate": "source app commit 4dc32b7d98066c172d82a7486a1290d1adaeea90; LCP-05 and LCP-06 passed; release boundary is INTERNAL_CANDIDATE; LCP-01/LCP-02 full lifecycle evidence remains for Beta.",
+    "pause_reason": null,
     "blocked_items": [],
-    "updated_at": "2026-08-18T06:24:12+00:00",
-    "roadmap_digest": "sha256:e2df69e4b62f790cb158261d4fe26cdcf8383931465b6d39489ff7062d211768"
+    "updated_at": "2026-08-18T06:44:15+00:00",
+    "roadmap_digest": "sha256:27a518d3c28ce140504ddb7e8616c1c205b89e0f1466f2f71b54c3c4ba260bdf"
   }
 }

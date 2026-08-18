@@ -2,7 +2,7 @@
   "schema_version": 3,
   "project": "Lansi Codex Provider Manager",
   "governance_state": "ACTIVE",
-  "updated_at": "2026-08-18T06:44:15+00:00",
+  "updated_at": "2026-08-18T07:06:38+00:00",
   "sessions": [
     {
       "session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
@@ -23,13 +23,13 @@
       "title": "LCP P3 LCP06 B1",
       "active_acceptance_id": "LCP-06",
       "mode": "VERIFY",
-      "scope": "LCP-06: verify the exact committed open-source candidate, build/recovery documentation, artifact manifests, and no-secret evidence before any GitHub push or release publication.",
+      "scope": "Release close: all six core acceptance evidence is reconciled and the exact internal-candidate artifacts are ready; await explicit GitHub publication authorization.",
       "forbidden_actions": "No push, merge, deployment, release publication, credential exposure",
-      "observed_at": "2026-08-18T06:38:25+00:00",
+      "observed_at": "2026-08-18T07:06:38+00:00",
       "handoff": "handoffs/2026-08-17-lcp04-baseline-rebuild.md"
     }
   ],
-  "revision": 123,
+  "revision": 131,
   "current_main_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
   "program": {
     "execution": "CONTINUOUS",
@@ -39,11 +39,11 @@
     "active_acceptance_id": "LCP-06",
     "mode": "VERIFY",
     "next_phase_id": "P3",
-    "next_acceptance_id": "LCP-01",
-    "candidate": "source app commit 4dc32b7d98066c172d82a7486a1290d1adaeea90; LCP-05 and LCP-06 passed; release boundary is INTERNAL_CANDIDATE; LCP-01/LCP-02 full lifecycle evidence remains for Beta.",
+    "next_acceptance_id": "RELEASE-CLOSE",
+    "candidate": "source candidate commit 6d8e25917d7f662d79db3f218ade36049f8d9057; all six core acceptance evidence reconciled; exact internal-candidate artifacts and checksums ready; no Beta/Stable label.",
     "pause_reason": null,
     "blocked_items": [],
-    "updated_at": "2026-08-18T06:44:15+00:00",
-    "roadmap_digest": "sha256:27a518d3c28ce140504ddb7e8616c1c205b89e0f1466f2f71b54c3c4ba260bdf"
+    "updated_at": "2026-08-18T07:06:38+00:00",
+    "roadmap_digest": "sha256:dd2bb8aebdec6eb05a60bc01fac5c5eab75522f5cbdcc8a62ee496b40abc6e5b"
   }
 }

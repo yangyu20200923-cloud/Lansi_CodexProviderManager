@@ -27,7 +27,9 @@ public struct ProviderID: RawRepresentable, Hashable, Codable, Sendable {
     public static let openAI = ProviderID(rawValue: "openai")!
     public static let qilin = ProviderID(rawValue: "qilin")!
     public static let vectorEngine = ProviderID(rawValue: "vectorengine")!
+    /// Compatibility IDs remain reserved so existing profiles keep their original config table names.
     public static let builtInIDs = [openAI, qilin, vectorEngine]
+    public static let defaultPresetIDs = [openAI]
 
     public static func custom() -> ProviderID {
         ProviderID(rawValue: UUID().uuidString.lowercased())!

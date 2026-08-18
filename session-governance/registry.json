@@ -1,0 +1,49 @@
+{
+  "schema_version": 3,
+  "project": "Lansi Codex Provider Manager",
+  "governance_state": "ACTIVE",
+  "updated_at": "2026-08-18T06:24:12+00:00",
+  "sessions": [
+    {
+      "session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+      "role": "MAIN",
+      "status": "ACTIVE",
+      "title": "LCP P2 LCP04 M",
+      "active_acceptance_id": "LCP-04",
+      "mode": "VERIFY",
+      "scope": "LCP-04: Qilin stale-lock recovery, provider switching, full model catalog/search, existing conversation routing",
+      "forbidden_actions": "No release, push, merge, deployment, credential exposure",
+      "observed_at": "2026-08-17T05:34:46+00:00"
+    },
+    {
+      "session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
+      "role": "BRANCH",
+      "status": "ACTIVE",
+      "parent_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+      "title": "LCP P2 LCP05 B1",
+      "active_acceptance_id": "LCP-05",
+      "mode": "VERIFY",
+      "scope": "LCP-05 release preflight: exact candidate committed; Mac artifact rebuilt; Windows artifact must be rebuilt on Windows from the same commit before push/release.",
+      "forbidden_actions": "No push, merge, deployment, release publication, credential exposure",
+      "observed_at": "2026-08-18T06:20:56+00:00",
+      "handoff": "handoffs/2026-08-17-lcp04-baseline-rebuild.md"
+    }
+  ],
+  "revision": 120,
+  "current_main_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+  "program": {
+    "execution": "PAUSED",
+    "lifecycle": "PAUSED",
+    "owner_session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
+    "current_phase_id": "P2",
+    "active_acceptance_id": "LCP-05",
+    "mode": "VERIFY",
+    "next_phase_id": "P2",
+    "next_acceptance_id": "LCP-05",
+    "candidate": "agent/lcp-phase0-rescue-20260810 release candidate; macOS DMG rebuilt and verified; Windows EXE/ZIP must be rebuilt on a Windows build machine from the final source commit.",
+    "pause_reason": "Windows/PyInstaller build environment is not available in this macOS workspace; the supplied Windows EXE/ZIP lacks exact commit provenance.",
+    "blocked_items": [],
+    "updated_at": "2026-08-18T06:24:12+00:00",
+    "roadmap_digest": "sha256:e2df69e4b62f790cb158261d4fe26cdcf8383931465b6d39489ff7062d211768"
+  }
+}

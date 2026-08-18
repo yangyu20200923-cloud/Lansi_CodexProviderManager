@@ -1,5 +1,5 @@
 # Synthetic fixture. Do not replace with a user config.
-model = "gpt-5.6-sol"
+model = "gpt-5.5"
 model_provider = "qilin"
 
 model_reasoning_effort = "xhigh"

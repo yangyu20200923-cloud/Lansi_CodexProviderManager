@@ -4,9 +4,8 @@ import XCTest
 final class ProviderProfileTests: XCTestCase {
     func testProviderDefaults() {
         XCTAssertTrue(ProviderDefaults.profile(for: .openAI).isBuiltIn)
-        XCTAssertEqual(ProviderDefaults.profile(for: .qilin).baseURL, "https://www.qilinapi.com/v1")
-        XCTAssertEqual(ProviderDefaults.profile(for: .vectorEngine).baseURL, "https://api.vectorengine.cn/v1")
-        XCTAssertEqual(ProviderDefaults.profile(for: .vectorEngine).wireAPI, "responses")
+        XCTAssertEqual(ProviderID.defaultPresetIDs, [.openAI])
+        XCTAssertEqual(ProviderDefaults.all.map(\.id), [.openAI])
     }
 
     func testRejectsInvalidThirdPartyProfile() {
@@ -17,10 +16,10 @@ final class ProviderProfileTests: XCTestCase {
         XCTAssertEqual(Set(ProviderValidator.validate(profile).map(\.field)), [.displayName, .baseURL, .wireAPI])
     }
 
-    func testAllowsCustomWireAPI() {
+    func testRejectsUnsupportedWireAPI() {
         var profile = ProviderDefaults.profile(for: .vectorEngine)
         profile.wireAPI = "custom-responses"
-        XCTAssertTrue(ProviderValidator.validate(profile).isEmpty)
+        XCTAssertEqual(ProviderValidator.validate(profile).map(\.field), [.wireAPI])
     }
 
     func testCustomProviderHasStableUUIDAndDedicatedConfigKey() {
@@ -39,5 +38,27 @@ final class ProviderProfileTests: XCTestCase {
         XCTAssertTrue(profile.configProviderID.hasPrefix("custom_"))
         XCTAssertFalse(profile.configProviderID.contains("-"))
         XCTAssertTrue(ProviderValidator.validate(profile).isEmpty)
+    }
+
+    func testDuplicateCreatesNewEnabledProfileWithoutStoredKeyState() {
+        let original = ProviderProfile(
+            id: ProviderID.custom(),
+            displayName: "Example Provider",
+            baseURL: "https://api.example.invalid/v1",
+            wireAPI: "responses",
+            apiKeyEnvironment: "EXAMPLE_PROVIDER_API_KEY",
+            model: "example-model",
+            isBuiltIn: false,
+            hasStoredKey: true
+        )
+
+        let duplicate = original.duplicated()
+
+        XCTAssertNotEqual(duplicate.id, original.id)
+        XCTAssertEqual(duplicate.baseURL, original.baseURL)
+        XCTAssertEqual(duplicate.wireAPI, original.wireAPI)
+        XCTAssertEqual(duplicate.apiKeyEnvironment, original.apiKeyEnvironment)
+        XCTAssertTrue(duplicate.enabled)
+        XCTAssertFalse(duplicate.hasStoredKey)
     }
 }

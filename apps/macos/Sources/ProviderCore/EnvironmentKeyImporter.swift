@@ -13,12 +13,12 @@ public struct EnvironmentKeyImporter: Sendable {
     }
 
     public func candidate(for provider: ProviderID) -> EnvironmentKeyCandidate? {
-        let variable: String
-        switch provider {
-        case .qilin: variable = "QILIN_API_KEY"
-        case .vectorEngine: variable = "VECTORENGINE_API_KEY"
-        case .openAI: return nil
-        }
+        let variable = provider == .qilin ? "QILIN_API_KEY" : provider == .vectorEngine ? "VECTORENGINE_API_KEY" : nil
+        return candidate(for: variable, provider: provider)
+    }
+
+    public func candidate(for variable: String?, provider: ProviderID) -> EnvironmentKeyCandidate? {
+        guard let variable, !variable.isEmpty else { return nil }
         guard let value = environment[variable], !value.isEmpty else { return nil }
         return EnvironmentKeyCandidate(provider: provider, value: value)
     }

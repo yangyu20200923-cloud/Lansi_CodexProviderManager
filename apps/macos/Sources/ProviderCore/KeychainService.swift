@@ -7,7 +7,7 @@ public enum KeychainError: Error, Equatable {
     case invalidData
 }
 
-public final class KeychainService: @unchecked Sendable {
+public final class KeychainService: ProviderCredentialStoring, @unchecked Sendable {
     private let service: String
 
     public init(service: String = "com.codex.provider-manager") {

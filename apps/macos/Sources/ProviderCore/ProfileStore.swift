@@ -24,7 +24,15 @@ public final class ProfileStore: @unchecked Sendable {
 
     public func load() throws -> ProfileSet {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return ProfileSet() }
-        return try JSONDecoder().decode(ProfileSet.self, from: Data(contentsOf: fileURL))
+        var profileSet = try JSONDecoder().decode(ProfileSet.self, from: Data(contentsOf: fileURL))
+        // Codex now strictly accepts only Responses. Keep this migration in memory until the
+        // user next saves a profile, so opening the manager never mutates a user's catalog.
+        for index in profileSet.profiles.indices where !profileSet.profiles[index].isBuiltIn {
+            if profileSet.profiles[index].wireAPI != "responses" {
+                profileSet.profiles[index].wireAPI = "responses"
+            }
+        }
+        return profileSet
     }
 
     public func save(_ profileSet: ProfileSet) throws {

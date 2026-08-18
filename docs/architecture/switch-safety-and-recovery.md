@@ -14,7 +14,7 @@ This contract defines the safety boundary shared by Windows and macOS when chang
 - A failed switch must either restore the pre-switch config and database state automatically or return a recovery-required result that identifies a redacted backup ID. It must never report success after a failed verification.
 
 - 使用一个既有 `CODEX_HOME`；不得迁移、删除或重建会话历史、Skills、插件、MCP 配置、`AGENTS.md` 或无关配置。
-- 写入前必须记录线程计数、会话 JSONL 数量和扩展目录哈希。切换仅可修改兼容性托管 TOML 字段与已批准的线程路由元数据。
+- 写入前必须记录线程计数、会话 JSONL 数量和扩展目录哈希。切换仅可修改兼容性托管 TOML 字段与已批准的线程路由元数据。`plugins/cache` 是由 Codex 独立更新的运行时缓存：切换器既不复制、哈希、移动也不恢复它；其余受保护根目录只做不变性校验，失败回退仅恢复由切换器写入的配置和会话数据库。
 - API Key、Bearer Token、认证文件、会话内容、数据库行和绝对主目录路径不得出现在诊断、日志、清单、夹具或 UI 状态中。
 - 切换失败时，必须自动恢复切换前的配置和数据库，或返回带脱敏备份 ID 的“需要恢复”结果；验证失败后绝不能报告成功。
 

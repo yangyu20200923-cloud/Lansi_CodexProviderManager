@@ -1,0 +1,49 @@
+{
+  "schema_version": 3,
+  "project": "Lansi Codex Provider Manager",
+  "governance_state": "ACTIVE",
+  "updated_at": "2026-08-18T07:30:04+00:00",
+  "sessions": [
+    {
+      "session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+      "role": "MAIN",
+      "status": "ACTIVE",
+      "title": "LCP P2 LCP04 M",
+      "active_acceptance_id": "LCP-04",
+      "mode": "VERIFY",
+      "scope": "LCP-04: Qilin stale-lock recovery, provider switching, full model catalog/search, existing conversation routing",
+      "forbidden_actions": "No release, push, merge, deployment, credential exposure",
+      "observed_at": "2026-08-17T05:34:46+00:00"
+    },
+    {
+      "session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
+      "role": "BRANCH",
+      "status": "ACTIVE",
+      "parent_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+      "title": "LCP P3 LCP06 B1",
+      "active_acceptance_id": "LCP-06",
+      "mode": "VERIFY",
+      "scope": "Release close: all six core acceptance evidence is reconciled and the exact internal-candidate artifacts are ready; await explicit GitHub publication authorization.",
+      "forbidden_actions": "No push, merge, deployment, release publication, credential exposure",
+      "observed_at": "2026-08-18T07:06:38+00:00",
+      "handoff": "handoffs/2026-08-17-lcp04-baseline-rebuild.md"
+    }
+  ],
+  "revision": 132,
+  "current_main_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+  "program": {
+    "execution": "PAUSED",
+    "lifecycle": "PAUSED",
+    "owner_session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
+    "current_phase_id": "P3",
+    "active_acceptance_id": "LCP-06",
+    "mode": "VERIFY",
+    "next_phase_id": "P3",
+    "next_acceptance_id": "RELEASE-CLOSE",
+    "candidate": "source candidate commit 668a54ef0c52461c00191d780c06afc3f583f9a3 plus local CI fix commit de05b89a5cddb27b9f45dda7a82afc49f0b0d02e awaiting GitHub push; internal-candidate artifacts and checksums ready.",
+    "pause_reason": "GitHub HTTPS transport is unreachable: HTTP/2 framing error followed by github.com:443 timeout after one HTTP/1.1 retry.",
+    "blocked_items": [],
+    "updated_at": "2026-08-18T07:30:04+00:00",
+    "roadmap_digest": "sha256:ef88f32ddab599dbf560dfe3995434bb54bde6d6b825864238e80dff24414e8b"
+  }
+}

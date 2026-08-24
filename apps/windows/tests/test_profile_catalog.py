@@ -519,6 +519,8 @@ name = "preserved"
         self.assertEqual(load_catalog(self.path)["profiles"][0]["wireApi"], "responses")
 
     def test_v2_command_auth_headers_web_search_and_aliases_round_trip_and_render(self):
+        command_path = str(Path(self.temporary.name) / "token-helper")
+        working_directory = str(Path(self.temporary.name))
         profile = {
             "id": "35c5a9e6-148b-4ebd-b771-97cf3b04e982",
             "providerId": "relay",
@@ -528,10 +530,10 @@ name = "preserved"
             "baseUrl": "https://relay.example.invalid/v1",
             "wireApi": "responses",
             "authCommand": {
-                "command": "/usr/bin/printf",
+                "command": command_path,
                 "timeoutMilliseconds": 2000,
                 "refreshIntervalMilliseconds": 60000,
-                "workingDirectory": "/tmp",
+                "workingDirectory": working_directory,
             },
             "httpHeaders": {"X-Client": "Codex"},
             "envHttpHeaders": {"Authorization": "RELAY_AUTH_HEADER"},
@@ -550,7 +552,12 @@ name = "preserved"
         self.assertEqual(loaded["profiles"][0], profile)
         self.assertIn('[model_providers.relay]', rendered)
         self.assertIn('[model_providers.custom_legacy]', rendered)
-        self.assertIn('auth = { command = "/usr/bin/printf", timeout_ms = 2000, refresh_interval_ms = 60000, cwd = "/tmp" }', rendered)
+        self.assertIn(
+            "auth = { "
+            f"command = {json.dumps(command_path)}, timeout_ms = 2000, "
+            f"refresh_interval_ms = 60000, cwd = {json.dumps(working_directory)} }}",
+            rendered,
+        )
         self.assertIn('http_headers = { "X-Client" = "Codex" }', rendered)
         self.assertIn('env_http_headers = { "Authorization" = "RELAY_AUTH_HEADER" }', rendered)
         self.assertIn('supports_standalone_web_search = true', rendered)

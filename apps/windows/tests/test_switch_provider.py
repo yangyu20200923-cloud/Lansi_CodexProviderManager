@@ -434,6 +434,9 @@ class SwitchTests(unittest.TestCase):
 
     def test_windows_process_guard_uses_tasklist_when_toolhelp_is_unavailable(self):
         with patch("switch_provider.os.name", "nt"), patch(
+            "switch_provider._codex_process_records_from_powershell",
+            side_effect=_CodexProcessProbeError("unavailable"),
+        ), patch(
             "switch_provider._codex_processes_from_toolhelp",
             side_effect=_CodexProcessProbeError("unavailable"),
         ), patch("switch_provider._codex_processes_from_tasklist", return_value=()):
@@ -441,6 +444,9 @@ class SwitchTests(unittest.TestCase):
 
     def test_windows_process_guard_still_blocks_a_detected_codex_process_from_fallback(self):
         with patch("switch_provider.os.name", "nt"), patch(
+            "switch_provider._codex_process_records_from_powershell",
+            side_effect=_CodexProcessProbeError("unavailable"),
+        ), patch(
             "switch_provider._codex_processes_from_toolhelp",
             side_effect=_CodexProcessProbeError("unavailable"),
         ), patch("switch_provider._codex_processes_from_tasklist", return_value=("Codex.exe",)):
@@ -448,6 +454,9 @@ class SwitchTests(unittest.TestCase):
 
     def test_windows_process_guard_fails_closed_only_when_both_probes_are_unavailable(self):
         with patch("switch_provider.os.name", "nt"), patch(
+            "switch_provider._codex_process_records_from_powershell",
+            side_effect=_CodexProcessProbeError("unavailable"),
+        ), patch(
             "switch_provider._codex_processes_from_toolhelp",
             side_effect=_CodexProcessProbeError("unavailable"),
         ), patch(

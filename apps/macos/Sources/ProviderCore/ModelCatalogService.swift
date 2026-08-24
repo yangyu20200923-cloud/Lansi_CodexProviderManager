@@ -31,6 +31,16 @@ public struct ModelCatalogService: Sendable {
     }
 
     public func fetch(baseURL: String, apiKey: String) async throws -> [String] {
+        try await fetch(baseURL: baseURL, apiKey: apiKey, httpHeaders: [:], environmentHTTPHeaders: [:])
+    }
+
+    public func fetch(
+        baseURL: String,
+        apiKey: String,
+        httpHeaders: [String: String],
+        environmentHTTPHeaders: [String: String],
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) async throws -> [String] {
         guard !apiKey.isEmpty else { throw ModelCatalogError.missingAPIKey }
         guard let url = Self.modelsURL(baseURL: baseURL) else { throw ModelCatalogError.invalidBaseURL }
 
@@ -40,6 +50,13 @@ public struct ModelCatalogService: Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Self.browserUserAgent, forHTTPHeaderField: "User-Agent")
+        for (header, value) in httpHeaders { request.setValue(value, forHTTPHeaderField: header) }
+        for (header, variable) in environmentHTTPHeaders {
+            if let value = environment[variable], !value.isEmpty { request.setValue(value, forHTTPHeaderField: header) }
+        }
+        if request.value(forHTTPHeaderField: "Authorization") == nil {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ModelCatalogError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else { throw ModelCatalogError.httpStatus(http.statusCode) }

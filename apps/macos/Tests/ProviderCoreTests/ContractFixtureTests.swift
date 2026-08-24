@@ -44,7 +44,7 @@ final class ContractFixtureTests: XCTestCase {
         XCTAssertEqual(profile.id.rawValue, "35c5a9e6-148b-4ebd-b771-97cf3b04e982")
         XCTAssertEqual(profile.displayName, "LCP-03 Cross-platform Fixture")
         XCTAssertFalse(profile.enabled)
-        XCTAssertEqual(profile.authMode, .apiKey)
+        XCTAssertEqual(profile.authMode, .environmentKey)
         XCTAssertEqual(profile.baseURL, "https://api.example.invalid/v1")
         XCTAssertEqual(profile.wireAPI, "responses")
         XCTAssertEqual(profile.apiKeyEnvironment, "LCP03_FIXTURE_API_KEY")

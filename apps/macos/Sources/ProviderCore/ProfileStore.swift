@@ -28,9 +28,7 @@ public final class ProfileStore: @unchecked Sendable {
         // Codex now strictly accepts only Responses. Keep this migration in memory until the
         // user next saves a profile, so opening the manager never mutates a user's catalog.
         for index in profileSet.profiles.indices where !profileSet.profiles[index].isBuiltIn {
-            if profileSet.profiles[index].wireAPI != "responses" {
-                profileSet.profiles[index].wireAPI = "responses"
-            }
+            profileSet.profiles[index].normalize()
         }
         return profileSet
     }
@@ -38,7 +36,9 @@ public final class ProfileStore: @unchecked Sendable {
     public func save(_ profileSet: ProfileSet) throws {
         let directory = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try JSONEncoder.pretty.encode(profileSet)
+        var normalized = profileSet
+        for index in normalized.profiles.indices { normalized.profiles[index].normalize() }
+        let data = try JSONEncoder.pretty.encode(normalized)
         let temporaryURL = directory.appendingPathComponent(".profiles-\(UUID().uuidString).tmp")
         try data.write(to: temporaryURL, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporaryURL.path)

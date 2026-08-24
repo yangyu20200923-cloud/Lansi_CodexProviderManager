@@ -107,4 +107,22 @@ final class ProfileStoreTests: XCTestCase {
 
         XCTAssertEqual(loaded.profiles.first(where: { $0.id == profile.id })?.enabled, false)
     }
+
+    func testLegacyProfileMigratesToProviderV2WithoutChangingItsCodexAlias() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let id = ProviderID.custom()
+        let legacyAlias = "custom_" + id.rawValue.replacingOccurrences(of: "-", with: "")
+        let url = root.appendingPathComponent("profiles.json")
+        try """
+        {"activeProvider":"\(id.rawValue)","profiles":[{"id":"\(id.rawValue)","displayName":"Legacy","authMode":"api_key","baseURL":"https://api.example.invalid/v1","wireAPI":"chat_completions","apiKeyEnvironment":"LEGACY_API_KEY","model":"legacy-model","isBuiltIn":false}]}
+        """.write(to: url, atomically: true, encoding: .utf8)
+
+        let loaded = try ProfileStore(fileURL: url).load().profiles[0]
+
+        XCTAssertEqual(loaded.providerID, legacyAlias)
+        XCTAssertEqual(loaded.authMode, .environmentKey)
+        XCTAssertEqual(loaded.wireAPI, "responses")
+    }
 }

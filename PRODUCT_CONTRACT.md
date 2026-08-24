@@ -23,8 +23,11 @@ without losing sessions, Skills, MCP configuration, plugins, or project state.
 | `LCP-04` | A successful or failed switch preserves the user's Codex working environment and offers verified recovery. | On isolated Codex homes, prove conversation/session continuity, thread routing, unrelated config preservation, Skill/plugin/MCP digest preservation, locking, backup, readback, rollback, and secret redaction on both platforms. |
 | `LCP-05` | A normal user can install, launch the native desktop UI, diagnose, switch, restore, and uninstall the Beta on each supported platform. | Test packaged artifacts on real Windows and macOS hosts, including one custom Provider preflight/switch/restore flow and documented unsigned/signing limitations. |
 | `LCP-06` | An open-source user can understand, build, and recover the application without private Lansi configuration. | Public repository documentation, license, build instructions, fixtures, release checksums, independent-project notice, and no-secret scan match the shipped artifacts. |
+| `LCP-07` | A macOS user can manage and switch Provider v2 profiles under the Codex `26.818.41509` custom-Provider rules. | On macOS, complete create, edit, duplicate, import, export, persistence, migration, model management, and isolated switching for stable Provider IDs, reserved-ID rejection, three exclusive auth modes, Responses-only transport, fixed/environment headers, command-token auth, standalone web-search capability, and historical aliases. |
+| `LCP-08` | A Windows user gets the same Provider v2 lifecycle and switching semantics after the macOS contract is proven. | Shared v1/v2 fixtures and Windows real-machine smoke prove field parity, migration, model governance, key cleanup, normal desktop exit without force-terminating the process tree, fail-before-write behavior when exit is refused or times out, process restart, readback, compatibility checks, and historical-session continuity. |
+| `LCP-09` | macOS and Windows preserve v1 profiles and historical Provider aliases while exchanging Provider v2 profiles without secrets. | Cross-platform round trips preserve every approved field, reject unknown or secret-bearing input, keep old sessions resolvable, and pass exact packaged-artifact lifecycle smoke on both platforms. |
 
-`LCP-01` through `LCP-06` are all core. A fixed provider selector, a catalog
+`LCP-01` through `LCP-09` are all core for the next approved increment. A fixed provider selector, a catalog
 data layer without an end-to-end UI flow, passing tests, or
 packaged ZIP files do not satisfy this contract by themselves.
 
@@ -45,6 +48,8 @@ without an explicit user-approved scope change.
 2. Complete `LCP-02` using the same profile semantics on macOS.
 3. Close cross-platform parity and preservation gaps in `LCP-03` and `LCP-04`.
 4. Package and prove the exact artifacts for `LCP-05` and `LCP-06`.
+5. Complete macOS Provider v2 under `LCP-07`.
+6. Align Windows and close cross-platform migration under `LCP-08` and `LCP-09`.
 
 Supporting tests and safety work should be implemented inside the acceptance
 slice they prove, not as independent product phases.
@@ -70,3 +75,8 @@ Scope change recorded on 2026-08-17: the user explicitly restricted the bundled
 default Provider catalog to the OpenAI default only. The applications must not
 ship third-party Provider entries, API endpoints, or unredacted keys; third-party
 Providers remain available only as user-created profiles.
+
+Scope correction recorded on 2026-08-22: the user confirmed the earlier iOS
+instruction was an input error. iOS development is fully frozen and excluded
+from the active product candidate. Provider v2 delivery proceeds on macOS first,
+then Windows, while any existing untracked iOS files remain untouched.

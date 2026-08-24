@@ -248,12 +248,14 @@ class SwitchTests(unittest.TestCase):
 
     def test_switch_clears_previous_api_key_and_reports_live_phases(self):
         old_key_name = "LCP_TEST_OLD_API_KEY"
+        other_key_name = "LCP_TEST_OTHER_API_KEY"
         self.config.write_text(
             'model = "old-model"\nmodel_provider = "custom"\n'
             '[model_providers.custom]\nname = "Old"\nenv_key = "LCP_TEST_OLD_API_KEY"\n',
             encoding="utf-8",
         )
         os.environ[old_key_name] = "synthetic-old-key"
+        os.environ[other_key_name] = "synthetic-other-key"
         phases = []
         try:
             with patch("switch_provider._codex_processes", return_value=()), patch(
@@ -263,14 +265,17 @@ class SwitchTests(unittest.TestCase):
                     "openai",
                     self.config,
                     self.state,
+                    cleanup_env_keys=(old_key_name, other_key_name),
                     phase_callback=lambda phase, message: phases.append((phase, message)),
                 )
         finally:
             os.environ.pop(old_key_name, None)
+            os.environ.pop(other_key_name, None)
 
         self.assertTrue(result["verified_provider"])
         self.assertTrue(result["old_api_key_cleared"])
         self.assertEqual(os.environ.get(old_key_name), None)
+        self.assertEqual(os.environ.get(other_key_name), None)
         self.assertEqual(
             [phase for phase, _message in phases],
             ["stopping", "normalizing", "backing_up", "applying", "verifying", "launching", "complete"],
@@ -452,6 +457,64 @@ class SwitchTests(unittest.TestCase):
             with self.assertRaisesRegex(CodexProcessProbeError, "无法确认 Codex 是否已经关闭"):
                 _codex_processes()
 
+    def test_runtime_quiescence_ignores_helpers_and_independent_app_servers(self):
+        records = (
+            {"ProcessId": 10, "ParentProcessId": 1, "Name": "ChatGPT.exe", "CommandLine": '"ChatGPT.exe"'},
+            {"ProcessId": 11, "ParentProcessId": 10, "Name": "ChatGPT.exe", "CommandLine": '"ChatGPT.exe" --type=renderer'},
+            {"ProcessId": 12, "ParentProcessId": 10, "Name": "Codex.exe", "CommandLine": 'codex app-server --analytics-default-enabled'},
+            {"ProcessId": 13, "ParentProcessId": 99, "Name": "Codex.exe", "CommandLine": 'codex app-server --listen stdio://'},
+            {"ProcessId": 14, "ParentProcessId": 1, "Name": "ChatGPT.exe", "CommandLine": 'crashpad_handler --monitor-self'},
+        )
+
+        self.assertEqual(
+            switch_provider_module._managed_runtime_processes(records),
+            ("ChatGPT.exe", "Codex.exe"),
+        )
+        self.assertEqual(
+            switch_provider_module._managed_runtime_processes((records[1], records[3], records[4])),
+            (),
+        )
+        self.assertEqual(switch_provider_module._desktop_main_process_ids(records), (10,))
+
+    def test_windows_stop_uses_only_the_normal_close_request(self):
+        with patch("switch_provider.os.name", "nt"), patch(
+            "switch_provider.request_codex_graceful_shutdown",
+            return_value={"requested": True, "closed": True, "windows": 1},
+        ) as graceful, patch("switch_provider.subprocess.run") as run:
+            result = switch_provider_module.stop_codex_process_tree()
+
+        graceful.assert_called_once_with(wait_seconds=15.0, tick=None)
+        run.assert_not_called()
+        self.assertEqual(result, {"requested": True, "terminated": False, "remaining": 0})
+
+    def test_graceful_shutdown_uses_restart_manager_when_window_close_is_not_available(self):
+        records = (
+            {"ProcessId": 10, "ParentProcessId": 1, "Name": "ChatGPT.exe", "CommandLine": '"ChatGPT.exe"'},
+        )
+        with patch("switch_provider._codex_processes", side_effect=[("ChatGPT.exe",), ()]), patch(
+            "switch_provider._codex_process_records_from_powershell", return_value=records
+        ), patch("switch_provider._codex_process_ids_from_toolhelp", return_value=(10,)), patch(
+            "switch_provider._post_close_to_codex_windows", return_value=0
+        ), patch(
+            "switch_provider._request_windows_restart_manager_shutdown", return_value=True
+        ) as restart_manager:
+            result = request_codex_graceful_shutdown(wait_seconds=0)
+
+        restart_manager.assert_called_once_with((10,))
+        self.assertEqual(result, {"requested": True, "closed": True, "windows": 0})
+
+    def test_windows_normal_close_timeout_fails_before_config_or_backup_changes(self):
+        original_config = self.config.read_bytes()
+        with patch(
+            "switch_provider.stop_codex_process_tree",
+            side_effect=CodexRunningError("normal close timeout"),
+        ):
+            with self.assertRaisesRegex(CodexRunningError, "normal close timeout"):
+                switch_provider("openai", self.config, self.state)
+
+        self.assertEqual(self.config.read_bytes(), original_config)
+        self.assertFalse((self.root / "backups").exists())
+
     def test_graceful_shutdown_posts_close_and_rechecks_before_switching(self):
         with patch("switch_provider._codex_processes", side_effect=[("Codex.exe",), ()]), patch(
             "switch_provider._codex_process_ids_from_toolhelp", return_value=(1234,)
@@ -465,7 +528,7 @@ class SwitchTests(unittest.TestCase):
         with patch("switch_provider._codex_processes", return_value=("Codex.exe",)), patch(
             "switch_provider._codex_process_ids_from_toolhelp", return_value=(1234,)
         ), patch("switch_provider._post_close_to_codex_windows", return_value=0):
-            with self.assertRaisesRegex(CodexRunningError, "未能在等待时间内正常关闭"):
+            with self.assertRaisesRegex(CodexRunningError, "未接受正常退出请求"):
                 request_codex_graceful_shutdown(wait_seconds=0)
 
     def test_graceful_shutdown_fails_closed_when_window_lookup_is_unavailable(self):

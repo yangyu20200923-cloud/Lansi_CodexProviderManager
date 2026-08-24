@@ -1,4 +1,4 @@
-import Darwin
+import AppKit
 import Foundation
 
 public enum ChatGPTServiceError: Error, Equatable, LocalizedError {
@@ -12,7 +12,7 @@ public enum ChatGPTServiceError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .commandFailed(let message): return message
-        case .timeout: return "Timed out waiting for the Codex desktop runtime to quit."
+        case .timeout: return "ChatGPT did not close cleanly. Close ChatGPT normally, wait for it to exit, then retry the Provider switch."
         case .codexExecutableUnavailable: return "The bundled Codex executable is unavailable."
         case .configurationVerificationFailed: return "Codex did not load the selected Provider configuration and authentication."
         case .runtimeEnvironmentVerificationFailed: return "The restarted Codex desktop runtime did not inherit the selected Provider API key."
@@ -57,46 +57,25 @@ public final class ChatGPTService: ProviderRuntimeControlling, @unchecked Sendab
     }
 
     public func quit() async throws {
-        // Terminate the ChatGPT-owned process tree directly. AppleScript can
-        // return macOS error -128 ("user canceled") when the app is busy or
-        // the automation permission is stale, which leaves the Provider
-        // Manager waiting forever. Terminate the main process first so it can
-        // exit gracefully and take its helpers with it; leftover crashpad and
-        // renderer helpers must also be removed, otherwise LaunchServices keeps
-        // reporting the app as running and a subsequent `open` does nothing.
+        // Ask the macOS application to quit cleanly. Do not signal or kill the
+        // Codex process tree: doing so tears down every active conversation's
+        // transport and makes the restarted desktop app reconnect all threads.
+        // A switch may only continue after the normal quit has released the
+        // main app and its managed app-server.
         let records = try processTableProvider()
-        let processIDs = Self.chatGPTOwnedProcessIDs(from: records)
         let mainProcessIDs = records.filter { Self.isChatGPTProcess($0) }.map(\.pid)
         for pid in mainProcessIDs.sorted(by: >) {
-            try terminate(pid: pid, signal: SIGTERM)
-        }
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
-        let remaining = try processTableProvider()
-        for pid in Self.chatGPTOwnedProcessIDs(from: remaining).sorted(by: >) {
-            try terminate(pid: pid, signal: SIGTERM)
+            guard let application = NSRunningApplication(processIdentifier: pid_t(pid)), application.terminate() else {
+                throw ChatGPTServiceError.commandFailed("ChatGPT did not accept a normal quit request. Close ChatGPT normally, then retry the Provider switch.")
+            }
         }
     }
 
     public func waitUntilQuiescent(timeout: TimeInterval = 15) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if try Self.chatGPTOwnedProcessIDs(from: processTableProvider()).isEmpty { return }
+            if try Self.chatGPTRuntimeProcessIDs(from: processTableProvider()).isEmpty { return }
             try await Task.sleep(nanoseconds: 250_000_000)
-        }
-
-        // A GUI process may ignore SIGTERM while its renderer is wedged. The
-        // switch has already taken a verified backup, so force-terminate only
-        // the same ChatGPT-owned process tree before declaring the switch
-        // blocked. Never touch an unrelated `codex app-server --listen
-        // stdio://` process.
-        let remaining = try Self.chatGPTOwnedProcessIDs(from: processTableProvider())
-        for pid in remaining.sorted(by: >) {
-            try terminate(pid: pid, signal: SIGKILL)
-        }
-        let forceDeadline = Date().addingTimeInterval(2)
-        while Date() < forceDeadline {
-            if try Self.chatGPTOwnedProcessIDs(from: processTableProvider()).isEmpty { return }
-            try await Task.sleep(nanoseconds: 100_000_000)
         }
         throw ChatGPTServiceError.timeout
     }
@@ -115,7 +94,20 @@ public final class ChatGPTService: ProviderRuntimeControlling, @unchecked Sendab
     }
 
     public func setEnvironment(profile: ProviderProfile, key: String?) throws {
-        let variables = ["QILIN_API_KEY", "VECTORENGINE_API_KEY"]
+        try setEnvironment(
+            profile: profile,
+            key: key,
+            clearing: [ProviderDefaults.profile(for: .qilin), ProviderDefaults.profile(for: .vectorEngine)]
+        )
+    }
+
+    public func setEnvironment(profile: ProviderProfile, key: String?, clearing profiles: [ProviderProfile]) throws {
+        var variables = Set(["QILIN_API_KEY", "VECTORENGINE_API_KEY"])
+        for candidate in profiles {
+            if let variable = candidate.apiKeyEnvironment?.trimmingCharacters(in: .whitespacesAndNewlines), !variable.isEmpty {
+                variables.insert(variable)
+            }
+        }
         for variable in variables { try run("/bin/launchctl", ["unsetenv", variable], acceptFailure: true) }
         guard profile.requiresAPIKey, let key, let variable = profile.apiKeyEnvironment else { return }
         try run("/bin/launchctl", ["setenv", variable, key])
@@ -281,18 +273,11 @@ public final class ChatGPTService: ProviderRuntimeControlling, @unchecked Sendab
         return Array(chatGPTPIDs.union(appServerPIDs)).sorted()
     }
 
-    /// All PIDs owned by the ChatGPT desktop app (main process, app-server,
-    /// crashpad, renderers, and helpers) so a switch can fully quiesce the
-    /// runtime before relaunching it.
+    /// Full ChatGPT process ownership is retained for diagnostics only. It is
+    /// intentionally not used to force a Provider switch, because helper and
+    /// renderer termination can interrupt unrelated in-flight conversations.
     static func chatGPTOwnedProcessIDs(from records: [ProcessRecord]) -> [Int32] {
         records.filter(isChatGPTOwnedProcess).map(\.pid).sorted()
-    }
-
-    private func terminate(pid: Int32, signal: Int32) throws {
-        guard pid > 1, pid != Int32(ProcessInfo.processInfo.processIdentifier) else { return }
-        if Darwin.kill(pid, signal) != 0, errno != ESRCH {
-            throw ChatGPTServiceError.commandFailed("Unable to terminate the ChatGPT runtime (PID \(pid)).")
-        }
     }
 
     private func processEnvironmentContains(name: String, processID: String) throws -> Bool {

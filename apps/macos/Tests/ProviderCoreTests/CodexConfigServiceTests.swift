@@ -83,7 +83,7 @@ final class CodexConfigServiceTests: XCTestCase {
         let profile = ProviderProfile(
             id: ProviderID.custom(),
             displayName: "Login Provider",
-            authMode: .chatGPTLogin,
+            authMode: .openAILogin,
             baseURL: nil,
             wireAPI: "responses",
             model: "gpt-5.5",
@@ -106,7 +106,7 @@ final class CodexConfigServiceTests: XCTestCase {
         let profile = ProviderProfile(
             id: ProviderID.custom(),
             displayName: "DeepSeek",
-            authMode: .apiKey,
+            authMode: .environmentKey,
             baseURL: "https://api.example.invalid/v1",
             wireAPI: "responses",
             apiKeyEnvironment: "DEEPSEEK_API_KEY",
@@ -216,5 +216,32 @@ final class CodexConfigServiceTests: XCTestCase {
         try CodexConfigService().apply(profile: vector, to: url, managesModelCatalog: true, modelCatalogSlugs: [])
         rendered = try String(contentsOf: url)
         XCTAssertTrue(rendered.contains("base_url = \"https://api.vectorengine.cn/v1\""))
+    }
+
+    func testProviderV2RendersCommandAuthHeadersCapabilityAndLegacyAlias() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let url = root.appendingPathComponent("config.toml")
+        try "model_provider = \"openai\"\n".write(to: url, atomically: true, encoding: .utf8)
+        let profile = ProviderProfile(
+            id: ProviderID.custom(), providerID: "relay", displayName: "Relay",
+            authMode: .commandToken, baseURL: "https://api.example.invalid/v1", wireAPI: "responses",
+            authCommand: ProviderAuthCommand(command: "/usr/bin/printf", timeoutMilliseconds: 2_000, refreshIntervalMilliseconds: 60_000, workingDirectory: "/tmp"),
+            httpHeaders: ["X-Client": "Codex"], environmentHTTPHeaders: ["Authorization": "RELAY_AUTH_HEADER"],
+            model: "relay-model", supportsStandaloneWebSearch: true, legacyAliases: ["custom_legacy"], isBuiltIn: false
+        )
+
+        try CodexConfigService().apply(profile: profile, to: url)
+        let rendered = try String(contentsOf: url)
+
+        XCTAssertTrue(rendered.contains("model_provider = \"relay\""))
+        XCTAssertTrue(rendered.contains("auth = { command = \"/usr/bin/printf\", timeout_ms = 2000, refresh_interval_ms = 60000, cwd = \"/tmp\" }"))
+        XCTAssertTrue(rendered.contains("http_headers = { \"X-Client\" = \"Codex\" }"))
+        XCTAssertTrue(rendered.contains("env_http_headers = { \"Authorization\" = \"RELAY_AUTH_HEADER\" }"))
+        XCTAssertTrue(rendered.contains("supports_standalone_web_search = true"))
+        XCTAssertTrue(rendered.contains("[model_providers.custom_legacy]"))
+        XCTAssertFalse(rendered.contains("env_key ="))
+        XCTAssertFalse(rendered.contains("requires_openai_auth ="))
     }
 }

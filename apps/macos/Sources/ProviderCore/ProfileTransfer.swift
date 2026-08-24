@@ -10,7 +10,7 @@ public enum ProfileTransfer {
     public static func export(_ profile: ProviderProfile) throws -> Data {
         guard !profile.id.isBuiltIn else { throw ProfileTransferError.builtInProfile }
         guard ProviderValidator.validate(profile).isEmpty else { throw ProfileTransferError.invalidProfile }
-        return try encoder.encode(PortableCatalog(profiles: [PortableProfile(profile: profile)]))
+        return try encoder.encode(PortableCatalog(schemaVersion: 2, profiles: [PortableProfile(profile: profile)]))
     }
 
     public static func importProfile(from data: Data) throws -> ProviderProfile {
@@ -38,18 +38,23 @@ public enum ProfileTransfer {
         return portable
     }
 
-    private static let canonicalCatalogKeys: Set<String> = ["profiles"]
+    private static let canonicalCatalogKeys: Set<String> = ["schemaVersion", "profiles"]
     private static let canonicalProfileKeys: Set<String> = [
-        "id", "name", "enabled", "authMode", "baseUrl", "wireApi", "apiKeyEnv", "model", "models",
-        "reasoningEffort", "reviewModel", "configOverrides"
+        "id", "providerId", "name", "enabled", "authMode", "baseUrl", "wireApi", "apiKeyEnv",
+        "authCommand", "httpHeaders", "envHttpHeaders", "model", "models", "reasoningEffort",
+        "reviewModel", "supportsStandaloneWebSearch", "legacyAliases", "configOverrides"
     ]
     private static let legacyProfileKeys: Set<String> = [
         "id", "displayName", "authMode", "baseURL", "wireAPI", "apiKeyEnvironment", "model", "models",
-        "reasoningEffort", "reviewModel", "configOverrides", "isBuiltIn", "enabled", "hasStoredKey"
+        "reasoningEffort", "reviewModel", "configOverrides", "isBuiltIn", "enabled", "hasStoredKey",
+        "providerID", "authCommand", "httpHeaders", "environmentHTTPHeaders", "supportsStandaloneWebSearch",
+        "legacyAliases"
     ]
 
     private static func validateCatalogShape(_ catalog: [String: Any]) throws {
-        guard Set(catalog.keys) == canonicalCatalogKeys, catalog["profiles"] is [[String: Any]] else {
+        guard Set(catalog.keys).isSubset(of: canonicalCatalogKeys),
+              catalog["profiles"] is [[String: Any]],
+              (catalog["schemaVersion"] as? Int ?? 1) <= 2 else {
             throw ProfileTransferError.invalidProfile
         }
     }
@@ -76,35 +81,48 @@ public enum ProfileTransfer {
 }
 
 private struct PortableCatalog: Codable {
+    let schemaVersion: Int?
     let profiles: [PortableProfile]
 }
 
 private struct PortableProfile: Codable {
     let id: String
+    let providerId: String?
     let name: String
     let enabled: Bool
     let authMode: ProviderAuthMode
     let baseUrl: String?
     let wireApi: String?
     let apiKeyEnv: String?
+    let authCommand: ProviderAuthCommand?
+    let httpHeaders: [String: String]?
+    let envHttpHeaders: [String: String]?
     let model: String?
     let models: [String]?
     let reasoningEffort: String?
     let reviewModel: String?
+    let supportsStandaloneWebSearch: Bool?
+    let legacyAliases: [String]?
     let configOverrides: [String: String]?
 
     init(profile: ProviderProfile) {
         id = profile.id.rawValue
+        providerId = profile.providerID
         name = profile.displayName
         enabled = profile.enabled
         authMode = profile.authMode
         baseUrl = profile.baseURL
         wireApi = profile.wireAPI
         apiKeyEnv = profile.apiKeyEnvironment
+        authCommand = profile.authCommand
+        httpHeaders = profile.httpHeaders
+        envHttpHeaders = profile.environmentHTTPHeaders
         model = profile.model
         models = profile.models
         reasoningEffort = profile.reasoningEffort
         reviewModel = profile.reviewModel
+        supportsStandaloneWebSearch = profile.supportsStandaloneWebSearch
+        legacyAliases = profile.legacyAliases
         configOverrides = profile.configOverrides
     }
 
@@ -114,15 +132,21 @@ private struct PortableProfile: Codable {
         }
         return ProviderProfile(
             id: providerID,
+            providerID: providerId,
             displayName: name,
             authMode: authMode,
             baseURL: baseUrl,
             wireAPI: wireApi,
             apiKeyEnvironment: apiKeyEnv,
+            authCommand: authCommand,
+            httpHeaders: httpHeaders ?? [:],
+            environmentHTTPHeaders: envHttpHeaders ?? [:],
             model: model,
             models: models ?? [],
             reasoningEffort: reasoningEffort,
             reviewModel: reviewModel,
+            supportsStandaloneWebSearch: supportsStandaloneWebSearch ?? false,
+            legacyAliases: legacyAliases ?? [],
             configOverrides: configOverrides ?? [:],
             isBuiltIn: false,
             enabled: enabled,

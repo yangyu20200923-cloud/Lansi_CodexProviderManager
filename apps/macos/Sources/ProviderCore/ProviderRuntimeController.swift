@@ -5,8 +5,15 @@ public protocol ProviderRuntimeControlling: Sendable {
     func waitUntilQuiescent(timeout: TimeInterval) async throws
     func launch() async throws
     func setEnvironment(profile: ProviderProfile, key: String?) throws
+    func setEnvironment(profile: ProviderProfile, key: String?, clearing profiles: [ProviderProfile]) throws
     func verifyConfiguration(codexHome: URL, profile: ProviderProfile, key: String?) throws
     func verifyLaunchedRuntime(profile: ProviderProfile) async throws
+}
+
+public extension ProviderRuntimeControlling {
+    func setEnvironment(profile: ProviderProfile, key: String?, clearing _: [ProviderProfile]) throws {
+        try setEnvironment(profile: profile, key: key)
+    }
 }
 
 public enum ProviderRuntimeOperation: Equatable, Sendable {

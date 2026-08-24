@@ -144,6 +144,26 @@ final class ChatGPTServiceTests: XCTestCase {
         )
     }
 
+    func testRuntimeQuiescenceIgnoresHelpersAfterTheMainAppAndAppServerExit() {
+        let records = [
+            ChatGPTService.ProcessRecord(
+                pid: 16670,
+                parentPID: 1,
+                command: "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/151.0.7922.137/Helpers/browser_crashpad_handler",
+                arguments: "--monitor-self"
+            ),
+            ChatGPTService.ProcessRecord(
+                pid: 16680,
+                parentPID: 1,
+                command: "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/151.0.7922.137/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)",
+                arguments: "--type=renderer"
+            )
+        ]
+
+        XCTAssertEqual(ChatGPTService.chatGPTRuntimeProcessIDs(from: records), [])
+        XCTAssertEqual(ChatGPTService.chatGPTOwnedProcessIDs(from: records), [16670, 16680])
+    }
+
     func testLaunchRetriesOpenAndFallsBackToForcedNewInstance() async throws {
         var openInvocations: [[String]] = []
         var mainProcessVisibleAt: [Int] = [1, 1, 1]

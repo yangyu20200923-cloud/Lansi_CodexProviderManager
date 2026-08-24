@@ -33,16 +33,22 @@ except ModuleNotFoundError:  # Supports package-style imports in cross-platform 
 
 _ALLOWED_PROFILE_FIELDS = {
     "id",
+    "providerId",
     "name",
     "enabled",
     "authMode",
     "baseUrl",
     "wireApi",
     "apiKeyEnv",
+    "authCommand",
+    "httpHeaders",
+    "envHttpHeaders",
     "model",
     "models",
     "reasoningEffort",
     "reviewModel",
+    "supportsStandaloneWebSearch",
+    "legacyAliases",
     "configOverrides",
 }
 _BUILTIN_CHOICES = ({
@@ -50,7 +56,7 @@ _BUILTIN_CHOICES = ({
     "name": "OpenAI",
     "kind": "builtin",
     "enabled": True,
-    "authMode": "chatgpt_login",
+    "authMode": "openai_login",
 },)
 _MAX_API_KEY_LENGTH = 16 * 1024
 
@@ -81,7 +87,7 @@ def _api_key_is_configured(profile: dict[str, object]) -> bool:
 
     environment = profile.get("apiKeyEnv")
     return bool(
-        profile.get("authMode") == "api_key"
+        profile.get("authMode") == "environment_key"
         and isinstance(environment, str)
         and environment
         and os.environ.get(environment)
@@ -136,8 +142,12 @@ def _normalise_profile(payload: object, *, existing: dict[str, object] | None = 
         raise WebAppError("缺少必填字段：name。")
     values["name"] = name.strip()
     values["enabled"] = bool(payload.get("enabled", source.get("enabled", True)))
-    values["authMode"] = str(payload.get("authMode", source.get("authMode", "api_key")))
-    if values["authMode"] not in {"api_key", "chatgpt_login"}:
+    values["providerId"] = str(payload.get("providerId", source.get("providerId", f"custom_{uuid.UUID(values['id']).hex[:12]}"))).strip().lower()
+    values["authMode"] = {"api_key": "environment_key", "chatgpt_login": "openai_login"}.get(
+        str(payload.get("authMode", source.get("authMode", "environment_key"))),
+        str(payload.get("authMode", source.get("authMode", "environment_key"))),
+    )
+    if values["authMode"] not in {"environment_key", "openai_login", "command_token"}:
         raise WebAppError("认证方式不受支持。")
     for field in ("baseUrl", "wireApi", "apiKeyEnv", "model"):
         value = payload.get(field, source.get(field))
@@ -161,7 +171,7 @@ def _normalise_profile(payload: object, *, existing: dict[str, object] | None = 
     values["models"] = normalized_models
     if "wireApi" in values and values["wireApi"] != "responses":
         raise WebAppError("当前 Codex 版本仅支持 Responses API。")
-    if values["authMode"] == "api_key":
+    if values["authMode"] == "environment_key":
         for field in ("baseUrl", "wireApi", "apiKeyEnv", "model"):
             if field not in values:
                 raise WebAppError(f"缺少必填字段：{field}。")
@@ -201,7 +211,7 @@ class LocalWebApp:
 
     def _load(self) -> dict[str, object]:
         if not self.catalog_path.exists():
-            return {"profiles": []}
+            return {"schemaVersion": 2, "profiles": []}
         return load_catalog(self.catalog_path)
 
     def _save(self, catalog: dict[str, object]) -> None:
@@ -250,7 +260,7 @@ class LocalWebApp:
             "credentialStatus": {
                 str(profile["id"]): {"apiKeyConfigured": _api_key_is_configured(profile)}
                 for profile in catalog["profiles"]
-                if profile.get("authMode") == "api_key"
+                if profile.get("authMode") == "environment_key"
             },
             "currentProvider": current_provider,
             "selectedId": selected_id or ("openai" if current_provider == "openai" else None),
@@ -305,7 +315,7 @@ class LocalWebApp:
         return {"importedProfileIds": [p["id"] for p in imported]}
 
     def export_profile(self, profile_id: str) -> dict[str, object]:
-        return {"profiles": [_public_profile(self._profile(profile_id))]}
+        return {"schemaVersion": 2, "profiles": [_public_profile(self._profile(profile_id))]}
 
     def store_profile_key(self, profile_id: str, api_key: object) -> dict[str, object]:
         """Write an API key outside the portable profile catalog and HTTP response."""
@@ -315,7 +325,7 @@ class LocalWebApp:
         if len(api_key) > _MAX_API_KEY_LENGTH:
             raise WebAppError("API Key 过长。")
         profile = self._profile(profile_id)
-        if profile.get("authMode") != "api_key":
+        if profile.get("authMode") != "environment_key":
             raise WebAppError("只有 API Key Provider 可以保存 API Key。")
         environment = profile.get("apiKeyEnv")
         if not isinstance(environment, str) or not environment:
@@ -328,7 +338,7 @@ class LocalWebApp:
 
     def fetch_profile_models(self, profile_id: str) -> dict[str, object]:
         profile = self._profile(profile_id)
-        if profile.get("authMode") != "api_key":
+        if profile.get("authMode") != "environment_key":
             raise WebAppError("只有 API Key Provider 可以从上游获取模型。")
         environment = profile.get("apiKeyEnv")
         if not isinstance(environment, str) or not environment:

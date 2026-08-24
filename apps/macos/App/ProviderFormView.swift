@@ -48,11 +48,28 @@ struct ProviderFormView: View {
     private var fields: some View {
         Grid(alignment: .leading, horizontalSpacing: 22, verticalSpacing: 14) {
             GridRow { label("field.display_name"); TextField(localization.string("placeholder.name"), text: binding(\.displayName)); defaultText(ProviderDefaults.profile(for: model.selectedID).displayName) }
+            GridRow {
+                label("field.provider_id")
+                TextField("provider_example", text: Binding(
+                    get: { model.selectedProfile.providerID },
+                    set: { model.changeSelectedProviderID($0) }
+                ))
+                .disabled(model.selectedProfile.isBuiltIn)
+                defaultText(localization.string("provider_id.help"))
+            }
             GridRow { label("field.enabled"); Toggle("", isOn: binding(\.enabled)).labelsHidden().disabled(model.selectedProfile.isBuiltIn); Color.clear.frame(minWidth: 0, idealWidth: 180, maxWidth: 180).frame(height: 1) }
-            GridRow { label("field.auth_mode"); authModeControl; defaultText(localization.string(model.selectedProfile.requiresAPIKey ? "auth.api_key" : "auth.chatgpt_login")) }
-            GridRow { label("field.base_url"); TextField(localization.string("placeholder.https"), text: optionalBinding(\.baseURL)).disabled(model.selectedProfile.isBuiltIn || !model.selectedProfile.requiresAPIKey); defaultText(ProviderDefaults.profile(for: model.selectedID).baseURL ?? localization.string("default.managed_chatgpt")) }
+            GridRow { label("field.auth_mode"); authModeControl; defaultText(authenticationDescription) }
+            GridRow { label("field.base_url"); TextField(localization.string("placeholder.https"), text: optionalBinding(\.baseURL)).disabled(model.selectedProfile.isBuiltIn); defaultText(ProviderDefaults.profile(for: model.selectedID).baseURL ?? localization.string("default.managed_chatgpt")) }
             GridRow { label("field.api_type"); apiTypeControl; defaultText(ProviderDefaults.profile(for: model.selectedID).wireAPI ?? localization.string("default.built_in")) }
-            GridRow { label("field.api_key_environment"); TextField("EXAMPLE_PROVIDER_API_KEY", text: optionalBinding(\.apiKeyEnvironment)).disabled(model.selectedProfile.isBuiltIn || !model.selectedProfile.requiresAPIKey); Color.clear.frame(minWidth: 0, idealWidth: 180, maxWidth: 180).frame(height: 1) }
+            if model.selectedProfile.authMode == .environmentKey {
+                GridRow { label("field.api_key_environment"); TextField("EXAMPLE_PROVIDER_API_KEY", text: optionalBinding(\.apiKeyEnvironment)).disabled(model.selectedProfile.isBuiltIn); Color.clear.frame(minWidth: 0, idealWidth: 180, maxWidth: 180).frame(height: 1) }
+            }
+            if model.selectedProfile.authMode == .commandToken {
+                GridRow { label("field.auth_command"); TextField("/absolute/path/to/token-command", text: authCommandBinding(\.command)); defaultText(localization.string("auth.command_help")) }
+                GridRow { label("field.auth_timeout"); TextField("10000", text: integerAuthCommandBinding(\.timeoutMilliseconds)); defaultText("100–300000 ms") }
+                GridRow { label("field.auth_refresh"); TextField("60000", text: optionalIntegerAuthCommandBinding(\.refreshIntervalMilliseconds)); defaultText(localization.string("auth.refresh_help")) }
+                GridRow { label("field.auth_cwd"); TextField("/optional/working/directory", text: optionalAuthCommandBinding(\.workingDirectory)); Color.clear.frame(minWidth: 0, idealWidth: 180, maxWidth: 180).frame(height: 1) }
+            }
             GridRow { label("field.model"); modelControl; defaultText(ProviderDefaults.profile(for: model.selectedID).model ?? localization.string("default.chatgpt")) }
             GridRow {
                 label("field.model_list")
@@ -67,32 +84,37 @@ struct ProviderFormView: View {
             }
             GridRow { label("field.reasoning_effort"); reasoningEffortControl; Color.clear.frame(minWidth: 0, idealWidth: 180, maxWidth: 180).frame(height: 1) }
             GridRow { label("field.review_model"); TextField(localization.string("placeholder.review_model"), text: optionalBinding(\.reviewModel)).disabled(model.selectedProfile.isBuiltIn); Color.clear.frame(minWidth: 0, idealWidth: 180, maxWidth: 180).frame(height: 1) }
+            GridRow { label("field.http_headers"); dictionaryEditor(binding: dictionaryBinding(\.httpHeaders), placeholder: "X-Client=Codex"); defaultText(localization.string("headers.fixed_help")) }
+            GridRow { label("field.env_http_headers"); dictionaryEditor(binding: dictionaryBinding(\.environmentHTTPHeaders), placeholder: "Authorization=PROVIDER_AUTH_HEADER"); defaultText(localization.string("headers.environment_help")) }
+            GridRow { label("field.web_search"); Toggle("", isOn: binding(\.supportsStandaloneWebSearch)).labelsHidden().disabled(model.selectedProfile.isBuiltIn); defaultText(localization.string("web_search.help")) }
+            if !model.selectedProfile.legacyAliases.isEmpty {
+                GridRow { label("field.legacy_aliases"); Text(model.selectedProfile.legacyAliases.joined(separator: ", ")).textSelection(.enabled); defaultText(localization.string("legacy_aliases.help")) }
+            }
             GridRow { label("field.config_overrides"); Text(localization.string("config_overrides.none")).foregroundStyle(.secondary); Color.clear.frame(minWidth: 0, idealWidth: 180, maxWidth: 180).frame(height: 1) }
-            GridRow {
-                label("field.api_key")
-                SecureField(
-                    localization.string(
-                        model.selectedProfile.hasStoredKey
-                            ? (model.isIsolatedAcceptance ? "key.saved_isolated_placeholder" : "key.saved_placeholder")
-                            : "key.enter_placeholder"
-                    ),
-                    text: $model.apiKeyDraft
-                )
-                .disabled(model.selectedProfile.isBuiltIn || !model.selectedProfile.requiresAPIKey)
-                HStack {
-                    Text(localization.string(
-                        !model.selectedProfile.requiresAPIKey
-                            ? "key.chatgpt_login"
-                            : (model.selectedProfile.hasStoredKey
+            if model.selectedProfile.authMode == .environmentKey {
+                GridRow {
+                    label("field.api_key")
+                    SecureField(
+                        localization.string(
+                            model.selectedProfile.hasStoredKey
+                                ? (model.isIsolatedAcceptance ? "key.saved_isolated_placeholder" : "key.saved_placeholder")
+                                : "key.enter_placeholder"
+                        ),
+                        text: $model.apiKeyDraft
+                    )
+                    .disabled(model.selectedProfile.isBuiltIn)
+                    HStack {
+                        Text(localization.string(
+                            model.selectedProfile.hasStoredKey
                                 ? (model.isIsolatedAcceptance ? "key.saved_isolated" : "key.saved")
-                                : "key.not_saved")
-                    ))
-                        .font(.caption).foregroundStyle(.secondary)
-                    if !model.selectedProfile.isBuiltIn,
-                       model.selectedProfile.requiresAPIKey,
-                       !model.isIsolatedAcceptance,
-                       EnvironmentKeyImporter().candidate(for: model.selectedProfile.apiKeyEnvironment, provider: model.selectedID) != nil {
-                        Button(localization.string("button.import")) { model.importEnvironmentKey() }.controlSize(.small)
+                                : "key.not_saved"
+                        ))
+                            .font(.caption).foregroundStyle(.secondary)
+                        if !model.selectedProfile.isBuiltIn,
+                           !model.isIsolatedAcceptance,
+                           EnvironmentKeyImporter().candidate(for: model.selectedProfile.apiKeyEnvironment, provider: model.selectedID) != nil {
+                            Button(localization.string("button.import")) { model.importEnvironmentKey() }.controlSize(.small)
+                        }
                     }
                 }
             }
@@ -382,13 +404,25 @@ struct ProviderFormView: View {
     private static let reasoningEffortOptions = ["low", "medium", "high", "xhigh", "max", "ultra"]
 
     private var authModeControl: some View {
-        Picker("", selection: binding(\.authMode)) {
-            Text(localization.string("auth.chatgpt_login")).tag(ProviderAuthMode.chatGPTLogin)
-            Text(localization.string("auth.api_key")).tag(ProviderAuthMode.apiKey)
+        Picker("", selection: Binding(
+            get: { model.selectedProfile.authMode },
+            set: { model.updateAuthenticationMode($0) }
+        )) {
+            Text(localization.string("auth.openai_login")).tag(ProviderAuthMode.openAILogin)
+            Text(localization.string("auth.environment_key")).tag(ProviderAuthMode.environmentKey)
+            Text(localization.string("auth.command_token")).tag(ProviderAuthMode.commandToken)
         }
         .labelsHidden()
         .frame(width: 180)
         .disabled(model.selectedProfile.isBuiltIn)
+    }
+
+    private var authenticationDescription: String {
+        switch model.selectedProfile.authMode {
+        case .openAILogin: localization.string("auth.openai_login")
+        case .environmentKey: localization.string("auth.environment_key")
+        case .commandToken: localization.string("auth.command_token")
+        }
     }
 
     private func label(_ key: String) -> some View { Text(localization.string(key)).frame(width: 110, alignment: .trailing) }
@@ -426,6 +460,73 @@ struct ProviderFormView: View {
             model.selectedProfile[keyPath: keyPath] = $0
             model.profileDidChange()
         })
+    }
+
+    private func authCommandBinding(_ keyPath: WritableKeyPath<ProviderAuthCommand, String>) -> Binding<String> {
+        Binding(get: { model.selectedProfile.authCommand?[keyPath: keyPath] ?? "" }, set: {
+            var command = model.selectedProfile.authCommand ?? ProviderAuthCommand()
+            command[keyPath: keyPath] = $0
+            model.selectedProfile.authCommand = command
+            model.profileDidChange()
+        })
+    }
+
+    private func optionalAuthCommandBinding(_ keyPath: WritableKeyPath<ProviderAuthCommand, String?>) -> Binding<String> {
+        Binding(get: { model.selectedProfile.authCommand?[keyPath: keyPath] ?? "" }, set: {
+            var command = model.selectedProfile.authCommand ?? ProviderAuthCommand()
+            command[keyPath: keyPath] = $0.isEmpty ? nil : $0
+            model.selectedProfile.authCommand = command
+            model.profileDidChange()
+        })
+    }
+
+    private func integerAuthCommandBinding(_ keyPath: WritableKeyPath<ProviderAuthCommand, Int>) -> Binding<String> {
+        Binding(get: { String(model.selectedProfile.authCommand?[keyPath: keyPath] ?? 10_000) }, set: {
+            guard let value = Int($0) else { return }
+            var command = model.selectedProfile.authCommand ?? ProviderAuthCommand()
+            command[keyPath: keyPath] = value
+            model.selectedProfile.authCommand = command
+            model.profileDidChange()
+        })
+    }
+
+    private func optionalIntegerAuthCommandBinding(_ keyPath: WritableKeyPath<ProviderAuthCommand, Int?>) -> Binding<String> {
+        Binding(get: { model.selectedProfile.authCommand?[keyPath: keyPath].map(String.init) ?? "" }, set: {
+            var command = model.selectedProfile.authCommand ?? ProviderAuthCommand()
+            command[keyPath: keyPath] = $0.isEmpty ? nil : Int($0)
+            model.selectedProfile.authCommand = command
+            model.profileDidChange()
+        })
+    }
+
+    private func dictionaryBinding(_ keyPath: WritableKeyPath<ProviderProfile, [String: String]>) -> Binding<String> {
+        Binding(get: {
+            model.selectedProfile[keyPath: keyPath].keys.sorted().compactMap { key in
+                model.selectedProfile[keyPath: keyPath][key].map { "\(key)=\($0)" }
+            }.joined(separator: "\n")
+        }, set: { text in
+            var values: [String: String] = [:]
+            for line in text.split(whereSeparator: \.isNewline) {
+                let parts = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                guard parts.count == 2 else { continue }
+                values[String(parts[0]).trimmingCharacters(in: .whitespaces)] = String(parts[1]).trimmingCharacters(in: .whitespaces)
+            }
+            model.selectedProfile[keyPath: keyPath] = values
+            model.profileDidChange()
+        })
+    }
+
+    private func dictionaryEditor(binding: Binding<String>, placeholder: String) -> some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: binding)
+                .font(.system(.body, design: .monospaced))
+                .frame(minHeight: 54, maxHeight: 78)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.25)))
+            if binding.wrappedValue.isEmpty {
+                Text(placeholder).foregroundStyle(.tertiary).padding(.horizontal, 6).padding(.vertical, 8).allowsHitTesting(false)
+            }
+        }
+        .disabled(model.selectedProfile.isBuiltIn)
     }
 
 }

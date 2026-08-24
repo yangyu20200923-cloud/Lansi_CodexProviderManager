@@ -153,6 +153,7 @@ class LocalWebAppTests(unittest.TestCase):
         self.assertNotIn('"apiKey"', json.dumps(exported))
         imported_profile = dict(exported["profiles"][0])
         imported_profile["id"] = "8c29df1a-60a8-4f50-ad4f-960137606092"
+        imported_profile["providerId"] = "imported_provider"
         imported_profile["name"] = "Imported Provider"
         _, imported = self.request(
             "/api/profile/import", method="POST", token=token, body={"profiles": [imported_profile]}
@@ -176,7 +177,7 @@ class LocalWebAppTests(unittest.TestCase):
         self.assertEqual(deleted_copy["removedProfileId"], copy_id)
         _, deleted_import = self.request("/api/profile/delete", method="POST", token=token, body={"id": imported_id})
         self.assertEqual(deleted_import["removedProfileId"], imported_id)
-        self.assertEqual(self.state()["choices"], [{"id": "openai", "name": "OpenAI", "kind": "builtin", "enabled": True, "authMode": "chatgpt_login"}])
+        self.assertEqual(self.state()["choices"], [{"id": "openai", "name": "OpenAI", "kind": "builtin", "enabled": True, "authMode": "openai_login"}])
 
     def test_import_rejects_secret_or_unknown_fields_without_changing_catalog(self):
         token = self.state()["sessionToken"]
@@ -192,9 +193,9 @@ class LocalWebAppTests(unittest.TestCase):
             "/api/profile",
             method="POST",
             token=token,
-            body={"name": "Login Profile", "authMode": "chatgpt_login", "model": "gpt-5.6-sol"},
+            body={"name": "Login Profile", "authMode": "chatgpt_login", "baseUrl": "https://api.example.invalid/v1", "wireApi": "responses", "model": "gpt-5.6-sol"},
         )
-        self.assertEqual(created["profile"]["authMode"], "chatgpt_login")
+        self.assertEqual(created["profile"]["authMode"], "openai_login")
         self.assertNotIn("apiKeyEnv", created["profile"])
 
     def test_cannot_disable_or_delete_the_current_custom_provider(self):
@@ -218,7 +219,9 @@ class LocalWebAppTests(unittest.TestCase):
         token = self.state()["sessionToken"]
         _, imported = self.request("/api/profile/import", method="POST", token=token, body=fixture)
         self.assertEqual(imported["importedProfileIds"], [fixture["profiles"][0]["id"]])
-        self.assertEqual(self.state()["profiles"], fixture["profiles"])
+        migrated = self.state()["profiles"]
+        self.assertEqual(migrated[0]["authMode"], "environment_key")
+        self.assertEqual(migrated[0]["providerId"], "custom_35c5a9e6148b")
 
         edited = dict(fixture["profiles"][0])
         edited["name"] = "LCP-03 Browser Edit"
@@ -270,7 +273,7 @@ class LocalWebAppTests(unittest.TestCase):
             "/api/profile",
             method="POST",
             token=token,
-            body={"name": "Login Profile", "authMode": "chatgpt_login", "model": "gpt-5.6-sol"},
+            body={"name": "Login Profile", "authMode": "chatgpt_login", "baseUrl": "https://api.example.invalid/v1", "wireApi": "responses", "model": "gpt-5.6-sol"},
         )
 
         for body in (

@@ -90,7 +90,7 @@ class WindowsDesktopUiContractTests(unittest.TestCase):
         with patch("switch_provider._codex_processes", return_value=()):
             self.assertTrue(self.manager.restore()["restored"])
         self.manager.remove(profile_id)
-        self.assertEqual(self.manager.state()["choices"], [{"id": "openai", "name": "OpenAI", "kind": "builtin", "enabled": True, "authMode": "chatgpt_login"}])
+        self.assertEqual(self.manager.state()["choices"], [{"id": "openai", "name": "OpenAI", "kind": "builtin", "enabled": True, "authMode": "openai_login"}])
 
     def test_model_list_limit_is_enforced_before_profile_is_saved(self):
         payload = self.profile_payload()
@@ -119,6 +119,17 @@ class WindowsDesktopUiContractTests(unittest.TestCase):
         self.assertEqual(loaded["model"], "fixture-model")
         self.assertEqual(loaded["models"], ["fixture-model", "fixture-reasoner"])
         self.assertNotIn("apiKey", loaded)
+
+    def test_provider_id_rename_preserves_the_previous_id_as_a_history_alias(self):
+        profile = self.manager.upsert(self.profile_payload("Rename Provider"))
+        previous_provider_id = profile["providerId"]
+        edited = dict(profile)
+        edited["providerId"] = "renamed_provider"
+
+        saved = self.manager.upsert(edited)
+
+        self.assertEqual(saved["providerId"], "renamed_provider")
+        self.assertIn(previous_provider_id, saved["legacyAliases"])
 
     def test_state_reports_saved_api_key_presence_without_exposing_key_value(self):
         profile = self.manager.upsert(self.profile_payload("Credential Status Provider"))
@@ -291,6 +302,8 @@ class WindowsDesktopUiContractTests(unittest.TestCase):
         self.assertEqual(draft["model"], "fixture-model")
         self.assertEqual(draft["models"], ["fixture-model", "fixture-reasoner"])
         self.assertEqual(draft["wireApi"], "responses")
+        self.assertEqual(draft["authMode"], "environment_key")
+        self.assertEqual(draft["providerId"], profile["providerId"])
 
     def test_profile_dialog_stages_upstream_models_until_user_adds_them(self):
         profile = self.manager.upsert(self.profile_payload("Staged Provider"))
@@ -374,6 +387,7 @@ class WindowsDesktopUiContractTests(unittest.TestCase):
         self.addCleanup(dialog.window.destroy)
 
         self.assertEqual(dialog.values["name"].get(), "Copy Source 副本")
+        self.assertEqual(dialog.values["providerId"].get(), profile["providerId"] + "_copy")
         self.assertEqual(dialog.values["model"].get(), "fixture-model")
         self.assertEqual(dialog._draft()["models"], ["fixture-model", "fixture-reasoner"])
 

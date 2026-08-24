@@ -27,6 +27,7 @@ final class ProviderManagerViewModel: ObservableObject {
     private let runtimeController: any ProviderRuntimeControlling
     private let codexHome: URL
     private var fetchTask: Task<Void, Never>?
+    private var persistedProviderIDs: [ProviderID: String]
     private var backupService: BackupService {
         BackupService(backupRoot: codexHome.appendingPathComponent("backups/CodexProviderManager"))
     }
@@ -50,6 +51,7 @@ final class ProviderManagerViewModel: ObservableObject {
         self.isIsolatedAcceptance = isIsolatedAcceptance
         self.codexHome = codexHome
         var loaded = (try? store.load()) ?? ProfileSet()
+        persistedProviderIDs = Dictionary(uniqueKeysWithValues: loaded.profiles.map { ($0.id, $0.providerID) })
         for index in loaded.profiles.indices where !loaded.profiles[index].isBuiltIn {
             let id = loaded.profiles[index].id
             loaded.profiles[index].hasStoredKey = (try? keychain.read(provider: id))?.isEmpty == false
@@ -58,7 +60,7 @@ final class ProviderManagerViewModel: ObservableObject {
             loaded.activeProvider = .openAI
         }
         if let active = (try? CodexConfigService().read(from: codexHome.appendingPathComponent("config.toml")))?.activeProvider,
-           let profile = loaded.profiles.first(where: { $0.configProviderID == active }) {
+           let profile = loaded.profiles.first(where: { $0.configProviderID == active || $0.legacyAliases.contains(active) }) {
             loaded.activeProvider = profile.id
         }
         profileSet = loaded
@@ -109,11 +111,13 @@ final class ProviderManagerViewModel: ObservableObject {
 
     func createCustomProvider() {
         let id = ProviderID.custom()
+        let providerID = uniqueProviderID(base: "provider_" + String(id.rawValue.prefix(8)))
         profileSet.profiles.append(
             ProviderProfile(
                 id: id,
+                providerID: providerID,
                 displayName: "New Provider",
-                authMode: .apiKey,
+                authMode: .environmentKey,
                 baseURL: nil,
                 wireAPI: "responses",
                 apiKeyEnvironment: nil,
@@ -128,7 +132,9 @@ final class ProviderManagerViewModel: ObservableObject {
     func duplicateSelectedProfile() {
         guard !selectedProfile.isBuiltIn else { return }
         let previousProfiles = profileSet
-        let duplicate = selectedProfile.duplicated()
+        let duplicate = selectedProfile.duplicated(
+            existingProviderIDs: Set(profileSet.profiles.map { $0.providerID.lowercased() })
+        )
         profileSet.profiles.append(duplicate)
         selectedID = duplicate.id
         apiKeyDraft = ""
@@ -233,7 +239,9 @@ final class ProviderManagerViewModel: ObservableObject {
             return
         }
         do {
+            preserveChangedProviderIDs()
             try store.save(profileSet)
+            refreshPersistedProviderIDs()
             statusMessage = "Provider saved."
         } catch {
             statusMessage = error.localizedDescription
@@ -294,6 +302,12 @@ final class ProviderManagerViewModel: ObservableObject {
             request.timeoutInterval = 20
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            for (header, value) in selectedProfile.httpHeaders { request.setValue(value, forHTTPHeaderField: header) }
+            for (header, variable) in selectedProfile.environmentHTTPHeaders {
+                if let value = ProcessInfo.processInfo.environment[variable], !value.isEmpty {
+                    request.setValue(value, forHTTPHeaderField: header)
+                }
+            }
             request.httpBody = try JSONSerialization.data(withJSONObject: ["model": selectedProfile.model ?? "gpt-5.5", "input": "Reply with OK.", "max_output_tokens": 8])
             let (_, response) = try await URLSession.shared.data(for: request)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -318,7 +332,9 @@ final class ProviderManagerViewModel: ObservableObject {
                 profileSet.profiles[selectedIndex].hasStoredKey = true
                 apiKeyDraft = ""
             }
+            preserveChangedProviderIDs()
             try store.save(profileSet)
+            refreshPersistedProviderIDs()
             let result = await ProviderSwitchCoordinator(
                 codexHome: codexHome,
                 keychain: keychain,
@@ -416,7 +432,7 @@ final class ProviderManagerViewModel: ObservableObject {
         diagnostics = result.diagnostics
         guard result.succeeded,
               let active = result.diagnostics?.activeProvider,
-              let restoredProfile = profileSet.profiles.first(where: { $0.configProviderID == active }) else { return }
+              let restoredProfile = profileSet.profiles.first(where: { $0.configProviderID == active || $0.legacyAliases.contains(active) }) else { return }
         profileSet.activeProvider = restoredProfile.id
         selectedID = restoredProfile.id
         do {
@@ -426,9 +442,42 @@ final class ProviderManagerViewModel: ObservableObject {
         }
     }
 
-    func validate() { validationIssues = ProviderValidator.validate(selectedProfile) }
+    func validate() { validationIssues = ProviderValidator.validate(selectedProfile, profiles: profileSet.profiles) }
 
     func profileDidChange() { validate() }
+
+    func changeSelectedProviderID(_ value: String) {
+        selectedProfile.changeProviderID(to: value)
+        profileDidChange()
+    }
+
+    func updateAuthenticationMode(_ mode: ProviderAuthMode) {
+        selectedProfile.authMode = mode
+        switch mode {
+        case .openAILogin:
+            selectedProfile.apiKeyEnvironment = nil
+            selectedProfile.authCommand = nil
+            apiKeyDraft = ""
+        case .environmentKey:
+            selectedProfile.authCommand = nil
+        case .commandToken:
+            selectedProfile.apiKeyEnvironment = nil
+            selectedProfile.authCommand = selectedProfile.authCommand ?? ProviderAuthCommand()
+            apiKeyDraft = ""
+        }
+        profileDidChange()
+    }
+
+    private func uniqueProviderID(base: String) -> String {
+        let used = Set(profileSet.profiles.map { $0.providerID.lowercased() })
+        var candidate = base.lowercased()
+        var suffix = 2
+        while used.contains(candidate) || ProviderProfile.reservedProviderIDs.contains(candidate) {
+            candidate = "\(base.lowercased())_\(suffix)"
+            suffix += 1
+        }
+        return candidate
+    }
 
     func fetchModelsFromUpstream() async {
         fetchTask?.cancel()
@@ -461,7 +510,12 @@ final class ProviderManagerViewModel: ObservableObject {
         do {
             let key = apiKeyDraft.isEmpty ? try keychain.read(provider: selectedID) : apiKeyDraft
             guard let key, !key.isEmpty else { throw ModelCatalogError.missingAPIKey }
-            let models = try await ModelCatalogService().fetch(baseURL: baseURL, apiKey: key)
+            let models = try await ModelCatalogService().fetch(
+                baseURL: baseURL,
+                apiKey: key,
+                httpHeaders: selectedProfile.httpHeaders,
+                environmentHTTPHeaders: selectedProfile.environmentHTTPHeaders
+            )
             guard !Task.isCancelled else { return }
             upstreamModels = models
             // Never flood the managed model list. The fetched catalog is kept
@@ -614,13 +668,29 @@ final class ProviderManagerViewModel: ObservableObject {
 
     private func persistProfileSet(success: String) -> Bool {
         do {
+            preserveChangedProviderIDs()
             try store.save(profileSet)
+            refreshPersistedProviderIDs()
             statusMessage = success
             return true
         } catch {
             statusMessage = error.localizedDescription
             return false
         }
+    }
+
+    private func preserveChangedProviderIDs() {
+        for index in profileSet.profiles.indices where !profileSet.profiles[index].isBuiltIn {
+            let id = profileSet.profiles[index].id
+            if let previous = persistedProviderIDs[id] {
+                profileSet.profiles[index].preserveLegacyAlias(previous)
+            }
+            profileSet.profiles[index].normalize()
+        }
+    }
+
+    private func refreshPersistedProviderIDs() {
+        persistedProviderIDs = Dictionary(uniqueKeysWithValues: profileSet.profiles.map { ($0.id, $0.providerID) })
     }
 
     private func insertImportedProfile(data: Data?, success: String, failurePrefix: String) {
@@ -630,8 +700,9 @@ final class ProviderManagerViewModel: ObservableObject {
         }
         do {
             var profile = try ProfileTransfer.importProfile(from: data)
-            if profileSet.profiles.contains(where: { $0.id == profile.id }) {
-                profile = profile.duplicated()
+            let existingProviderIDs = Set(profileSet.profiles.map { $0.providerID.lowercased() })
+            if profileSet.profiles.contains(where: { $0.id == profile.id }) || existingProviderIDs.contains(profile.providerID.lowercased()) {
+                profile = profile.duplicated(existingProviderIDs: existingProviderIDs)
             }
             let previousProfiles = profileSet
             let previousSelection = selectedID

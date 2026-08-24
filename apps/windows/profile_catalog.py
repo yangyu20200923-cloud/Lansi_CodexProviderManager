@@ -20,20 +20,30 @@ class ProfileCatalogError(ValueError):
 
 _PROFILE_FIELDS = {
     "id",
+    "providerId",
     "name",
     "enabled",
     "authMode",
     "baseUrl",
     "wireApi",
     "apiKeyEnv",
+    "authCommand",
+    "httpHeaders",
+    "envHttpHeaders",
     "model",
     "models",
     "reasoningEffort",
     "reviewModel",
+    "supportsStandaloneWebSearch",
+    "legacyAliases",
     "configOverrides",
 }
 _REQUIRED_FIELDS = {"id", "name", "enabled", "authMode"}
 _ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,127}$")
+_PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+_RESERVED_PROVIDER_IDS = {"openai", "ollama", "lmstudio"}
+_AUTH_MODES = {"openai_login", "environment_key", "command_token"}
+_CREDENTIAL_HEADERS = {"authorization", "proxy-authorization", "x-api-key", "api-key"}
 _SUPPORTED_WIRE_API = "responses"
 MAX_MANAGED_MODELS = 100
 _MAX_UPSTREAM_MODELS = 1000
@@ -66,17 +76,46 @@ def _validate_profile(profile: object) -> dict[str, object]:
         raise ProfileCatalogError("Profile id must be a UUID") from error
     if not isinstance(profile["name"], str) or not profile["name"].strip():
         raise ProfileCatalogError("Profile name is required")
-    if not isinstance(profile["enabled"], bool) or profile["authMode"] not in {"chatgpt_login", "api_key"}:
+    provider_id = profile.get("providerId")
+    if not isinstance(provider_id, str) or not _PROVIDER_ID.fullmatch(provider_id):
+        raise ProfileCatalogError("Provider ID must start with a lowercase letter and use only lowercase letters, digits, underscores, or hyphens")
+    if provider_id in _RESERVED_PROVIDER_IDS:
+        raise ProfileCatalogError("openai, ollama, and lmstudio are reserved Provider IDs")
+    if not isinstance(profile["enabled"], bool) or profile["authMode"] not in _AUTH_MODES:
         raise ProfileCatalogError("Profile enabled and authMode values are invalid")
-    if profile["authMode"] == "api_key":
+    if profile["authMode"] != "openai_login":
         base_url = profile.get("baseUrl")
-        if not isinstance(base_url, str) or urlparse(base_url).scheme != "https":
-            raise ProfileCatalogError("API-key profiles need an HTTPS baseUrl")
+        parsed_base_url = urlparse(base_url) if isinstance(base_url, str) else None
+        if parsed_base_url is None or parsed_base_url.scheme != "https" or not parsed_base_url.netloc:
+            raise ProfileCatalogError("Custom Provider profiles need an HTTPS baseUrl")
+        if profile.get("wireApi") != _SUPPORTED_WIRE_API:
+            raise ProfileCatalogError("Custom Provider profiles need wireApi=responses")
+        if not isinstance(profile.get("model"), str) or not str(profile["model"]).strip():
+            raise ProfileCatalogError("Custom Provider profiles need a model")
+    if profile["authMode"] == "environment_key":
         environment_name = profile.get("apiKeyEnv")
         if not isinstance(environment_name, str) or not _ENV_NAME.fullmatch(environment_name):
             raise ProfileCatalogError("API-key profiles need a valid apiKeyEnv")
-        if profile.get("wireApi") != _SUPPORTED_WIRE_API:
-            raise ProfileCatalogError("API-key profiles need wireApi=responses")
+    elif "apiKeyEnv" in profile:
+        raise ProfileCatalogError("Only environment-key profiles may define apiKeyEnv")
+    command = profile.get("authCommand")
+    if profile["authMode"] == "command_token":
+        if not isinstance(command, dict) or set(command) - {"command", "timeoutMilliseconds", "refreshIntervalMilliseconds", "workingDirectory"}:
+            raise ProfileCatalogError("Command-token profiles need a valid authCommand")
+        executable = command.get("command")
+        if not isinstance(executable, str) or not Path(executable).is_absolute():
+            raise ProfileCatalogError("Authentication command must be an absolute path")
+        timeout = command.get("timeoutMilliseconds", 10_000)
+        if not isinstance(timeout, int) or isinstance(timeout, bool) or not 100 <= timeout <= 300_000:
+            raise ProfileCatalogError("Authentication command timeout must be between 100 and 300000 ms")
+        refresh = command.get("refreshIntervalMilliseconds")
+        if refresh is not None and (not isinstance(refresh, int) or isinstance(refresh, bool) or refresh < 0):
+            raise ProfileCatalogError("Authentication command refresh interval must be a non-negative integer")
+        working_directory = command.get("workingDirectory")
+        if working_directory is not None and (not isinstance(working_directory, str) or not Path(working_directory).is_absolute()):
+            raise ProfileCatalogError("Authentication command working directory must be absolute")
+    elif command is not None:
+        raise ProfileCatalogError("Only command-token profiles may define authCommand")
     for name in ("baseUrl", "apiKeyEnv", "model", "reasoningEffort", "reviewModel"):
         if name in profile and (not isinstance(profile[name], str) or not profile[name].strip()):
             raise ProfileCatalogError(f"Profile {name} must be text")
@@ -93,19 +132,42 @@ def _validate_profile(profile: object) -> dict[str, object]:
         not isinstance(profile["configOverrides"], dict) or profile["configOverrides"]
     ):
         raise ProfileCatalogError("No configOverrides are approved")
+    for field in ("httpHeaders", "envHttpHeaders"):
+        headers = profile.get(field, {})
+        if not isinstance(headers, dict) or any(
+            not isinstance(key, str) or not key.strip() or not isinstance(value, str) or not value.strip()
+            for key, value in headers.items()
+        ):
+            raise ProfileCatalogError(f"Profile {field} must be a non-empty text map")
+    if any(key.casefold() in _CREDENTIAL_HEADERS for key in profile.get("httpHeaders", {})):
+        raise ProfileCatalogError("Credential headers must reference environment variables instead of storing values")
+    if any(not _ENV_NAME.fullmatch(value) for value in profile.get("envHttpHeaders", {}).values()):
+        raise ProfileCatalogError("Environment HTTP headers must reference valid environment variable names")
+    if "supportsStandaloneWebSearch" in profile and not isinstance(profile["supportsStandaloneWebSearch"], bool):
+        raise ProfileCatalogError("supportsStandaloneWebSearch must be true or false")
+    aliases = profile.get("legacyAliases", [])
+    if not isinstance(aliases, list) or any(not isinstance(alias, str) or not _PROVIDER_ID.fullmatch(alias) for alias in aliases):
+        raise ProfileCatalogError("Legacy aliases must be valid Provider IDs")
+    if provider_id in aliases or len(set(aliases)) != len(aliases):
+        raise ProfileCatalogError("Legacy aliases must be unique and different from the Provider ID")
     return profile
 
 
 def _validate_catalog(catalog: object) -> dict[str, object]:
-    if not isinstance(catalog, dict) or set(catalog) != {"profiles"}:
-        raise ProfileCatalogError("Catalog must contain only profiles")
+    if not isinstance(catalog, dict) or set(catalog) != {"schemaVersion", "profiles"}:
+        raise ProfileCatalogError("Catalog must contain schemaVersion and profiles")
+    if catalog["schemaVersion"] != 2:
+        raise ProfileCatalogError("Only profile catalog schemaVersion=2 is supported")
     profiles = catalog["profiles"]
     if not isinstance(profiles, list):
         raise ProfileCatalogError("Catalog profiles must be a list")
     validated = [_validate_profile(profile) for profile in profiles]
     if len({profile["id"] for profile in validated}) != len(validated):
         raise ProfileCatalogError("Profile ids must be unique")
-    return {"profiles": validated}
+    provider_ids = [str(profile["providerId"]).casefold() for profile in validated]
+    if len(set(provider_ids)) != len(provider_ids):
+        raise ProfileCatalogError("Provider IDs must be unique")
+    return {"schemaVersion": 2, "profiles": validated}
 
 
 def load_catalog(path: Path) -> dict[str, object]:
@@ -113,10 +175,10 @@ def load_catalog(path: Path) -> dict[str, object]:
         catalog = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ProfileCatalogError("Profile catalog is missing or invalid") from error
-    return _validate_catalog(_migrate_legacy_wire_api(catalog))
+    return _validate_catalog(_migrate_catalog(catalog, migrate_legacy_wire_api=True))
 
 
-def _migrate_legacy_wire_api(catalog: object) -> object:
+def _migrate_catalog(catalog: object, *, migrate_legacy_wire_api: bool = False) -> object:
     """Read legacy profiles safely without rendering a value strict Codex rejects.
 
     The migration is in-memory: a catalog is only rewritten after the user explicitly saves,
@@ -125,19 +187,40 @@ def _migrate_legacy_wire_api(catalog: object) -> object:
 
     if not isinstance(catalog, dict) or not isinstance(catalog.get("profiles"), list):
         return catalog
+    if catalog.get("schemaVersion", 1) not in {1, 2}:
+        return catalog
     migrated: list[object] = []
     for profile in catalog["profiles"]:
-        if isinstance(profile, dict) and profile.get("wireApi") not in {None, _SUPPORTED_WIRE_API}:
+        if isinstance(profile, dict):
             updated = dict(profile)
-            updated["wireApi"] = _SUPPORTED_WIRE_API
+            profile_id = str(updated.get("id", ""))
+            try:
+                legacy_provider_id = f"custom_{uuid.UUID(profile_id).hex[:12]}"
+            except (ValueError, TypeError, AttributeError):
+                legacy_provider_id = ""
+            updated["providerId"] = str(updated.get("providerId") or legacy_provider_id).strip().lower()
+            updated["authMode"] = {
+                "api_key": "environment_key",
+                "chatgpt_login": "openai_login",
+            }.get(updated.get("authMode"), updated.get("authMode"))
+            if migrate_legacy_wire_api or updated.get("wireApi") is None:
+                updated["wireApi"] = _SUPPORTED_WIRE_API
+            updated.setdefault("httpHeaders", {})
+            updated.setdefault("envHttpHeaders", {})
+            updated.setdefault("supportsStandaloneWebSearch", False)
+            aliases = updated.get("legacyAliases", [])
+            updated["legacyAliases"] = list(dict.fromkeys(
+                alias.strip().lower() for alias in aliases
+                if isinstance(alias, str) and alias.strip().lower() != updated["providerId"]
+            )) if isinstance(aliases, list) else []
             migrated.append(updated)
         else:
             migrated.append(profile)
-    return {**catalog, "profiles": migrated}
+    return {"schemaVersion": 2, "profiles": migrated}
 
 
 def save_catalog(path: Path, catalog: dict[str, object]) -> None:
-    validated = _validate_catalog(catalog)
+    validated = _validate_catalog(_migrate_catalog(catalog))
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
@@ -166,16 +249,27 @@ def _models_endpoint(base_url: str) -> str:
     return parsed._replace(path=path, params="", query="", fragment="").geturl()
 
 
-def _request_models_payload(base_url: str, api_key: str) -> object:
+def _request_models_payload(
+    base_url: str,
+    api_key: str,
+    http_headers: dict[str, str] | None = None,
+    env_http_headers: dict[str, str] | None = None,
+) -> object:
     if not api_key:
         raise ProfileCatalogError("API key is required to fetch models")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    }
+    headers.update(http_headers or {})
+    for header, environment_name in (env_http_headers or {}).items():
+        value = os.environ.get(environment_name)
+        if value:
+            headers[header] = value
     request = urllib.request.Request(
         _models_endpoint(base_url),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -187,8 +281,13 @@ def _request_models_payload(base_url: str, api_key: str) -> object:
     return payload
 
 
-def fetch_models(base_url: str, api_key: str) -> list[str]:
-    return _model_ids(_request_models_payload(base_url, api_key))
+def fetch_models(
+    base_url: str,
+    api_key: str,
+    http_headers: dict[str, str] | None = None,
+    env_http_headers: dict[str, str] | None = None,
+) -> list[str]:
+    return _model_ids(_request_models_payload(base_url, api_key, http_headers, env_http_headers))
 
 
 def _model_ids(payload: object) -> list[str]:
@@ -379,6 +478,7 @@ def main() -> int:
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--id")
     parser.add_argument("--name")
+    parser.add_argument("--provider-id")
     parser.add_argument("--base-url")
     parser.add_argument("--wire-api")
     parser.add_argument("--api-key-env")
@@ -387,7 +487,7 @@ def main() -> int:
     parser.add_argument("--models-json")
     parser.add_argument("--fetch-models", action="store_true")
     parser.add_argument("--enabled", choices=("true", "false"))
-    parser.add_argument("--auth-mode", choices=("chatgpt_login", "api_key"))
+    parser.add_argument("--auth-mode", choices=("openai_login", "environment_key", "command_token", "chatgpt_login", "api_key"))
     parser.add_argument("--reasoning-effort")
     parser.add_argument("--review-model")
     parser.add_argument("--config-overrides-json")
@@ -403,12 +503,12 @@ def main() -> int:
         api_key = os.environ.get(args.api_key_env, "")
         print(json.dumps({"models": fetch_models(args.base_url, api_key)}, ensure_ascii=False))
         return 0
-    catalog = load_catalog(args.catalog) if args.catalog.exists() else {"profiles": []}
+    catalog = load_catalog(args.catalog) if args.catalog.exists() else {"schemaVersion": 2, "profiles": []}
     if args.export_path is not None:
         if not args.id: parser.error("export requires --id")
         profile = next((item for item in catalog["profiles"] if item["id"] == args.id), None)
         if profile is None: parser.error("profile id was not found")
-        save_catalog(args.export_path, {"profiles": [profile]})
+        save_catalog(args.export_path, {"schemaVersion": 2, "profiles": [profile]})
         print(json.dumps({"exportedProfileId": profile["id"]}, ensure_ascii=False))
         return 0
     if args.import_file is not None:
@@ -439,8 +539,10 @@ def main() -> int:
         return 0
     if not args.name:
         parser.error("upsert requires --name")
-    auth_mode = args.auth_mode or "api_key"
-    if auth_mode == "api_key" and not all((args.base_url, args.api_key_env)):
+    auth_mode = {"api_key": "environment_key", "chatgpt_login": "openai_login"}.get(
+        args.auth_mode or "environment_key", args.auth_mode or "environment_key"
+    )
+    if auth_mode == "environment_key" and not all((args.base_url, args.api_key_env)):
         parser.error("API-key upsert requires --base-url and --api-key-env")
     try:
         config_overrides = json.loads(args.config_overrides_json) if args.config_overrides_json else {}
@@ -448,10 +550,15 @@ def main() -> int:
         parser.error(f"config-overrides-json must be JSON: {error.msg}")
     profile = {
         "id": args.id,
+        "providerId": (args.provider_id or f"custom_{uuid.UUID(args.id).hex[:12]}").lower(),
         "name": args.name,
         "enabled": args.enabled != "false",
         "authMode": auth_mode,
         "configOverrides": config_overrides,
+        "httpHeaders": {},
+        "envHttpHeaders": {},
+        "supportsStandaloneWebSearch": False,
+        "legacyAliases": [],
     }
     values = {
         "baseUrl": args.base_url,

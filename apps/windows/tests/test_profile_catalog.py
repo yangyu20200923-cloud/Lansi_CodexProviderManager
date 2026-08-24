@@ -196,7 +196,10 @@ class ProfileCatalogTests(unittest.TestCase):
 
         save_catalog(self.path, catalog)
 
-        self.assertEqual(load_catalog(self.path), catalog)
+        loaded = load_catalog(self.path)
+        self.assertEqual(loaded["schemaVersion"], 2)
+        self.assertEqual(loaded["profiles"][0]["authMode"], "environment_key")
+        self.assertEqual(loaded["profiles"][0]["providerId"], "custom_70a1d0447be6")
         stored_profile = json.loads(self.path.read_text(encoding="utf-8"))["profiles"][0]
         self.assertNotIn("apiKey", stored_profile)
 
@@ -407,7 +410,10 @@ class ProfileCatalogTests(unittest.TestCase):
         save_catalog(self.path, fixture)
         provider, rendered = render_custom_profile_config('model_provider = "openai"\n', profile)
 
-        self.assertEqual(load_catalog(self.path), fixture)
+        loaded = load_catalog(self.path)
+        self.assertEqual(loaded["schemaVersion"], 2)
+        self.assertEqual(loaded["profiles"][0]["authMode"], "environment_key")
+        self.assertEqual(loaded["profiles"][0]["providerId"], "custom_35c5a9e6148b")
         self.assertEqual(provider, "custom_35c5a9e6148b")
         self.assertIn('model = "lcp-03-model"', rendered)
         self.assertEqual(profile["models"], ["lcp-03-model", "lcp-03-fast"])
@@ -460,19 +466,23 @@ name = "preserved"
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(load_catalog(self.path), fixture)
+        loaded = load_catalog(self.path)
+        self.assertEqual(loaded["schemaVersion"], 2)
+        self.assertEqual(loaded["profiles"][0]["authMode"], "environment_key")
 
     def test_chatgpt_login_profile_has_no_api_key_requirement_or_rendered_reference(self):
         profile_id = "35c5a9e6-148b-4ebd-b771-97cf3b04e982"
         result = self.run_catalog_cli(
             "--catalog", str(self.path), "--id", profile_id, "--name", "ChatGPT Login",
-            "--enabled", "true", "--auth-mode", "chatgpt_login", "--config-overrides-json", "{}",
+            "--enabled", "true", "--auth-mode", "chatgpt_login",
+            "--base-url", "https://api.example.invalid/v1", "--wire-api", "responses",
+            "--model", "gpt-5.6-sol", "--config-overrides-json", "{}",
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
         profile = load_catalog(self.path)["profiles"][0]
         _, rendered = render_custom_profile_config('model_provider = "openai"\n', profile)
-        self.assertEqual(profile["authMode"], "chatgpt_login")
+        self.assertEqual(profile["authMode"], "openai_login")
         self.assertNotIn("apiKeyEnv", profile)
         self.assertNotIn("env_key", rendered)
         self.assertIn("requires_openai_auth = true", rendered)
@@ -502,11 +512,77 @@ name = "preserved"
         catalog = {"profiles": [{
             "id": "35c5a9e6-148b-4ebd-b771-97cf3b04e982", "name": "Legacy Wire",
             "enabled": True, "authMode": "api_key", "baseUrl": "https://api.example.invalid/v1",
-            "apiKeyEnv": "LEGACY_WIRE_API_KEY", "wireApi": "chat_completions",
+            "apiKeyEnv": "LEGACY_WIRE_API_KEY", "wireApi": "chat_completions", "model": "legacy-model",
         }]}
         self.path.write_text(json.dumps(catalog), encoding="utf-8")
 
         self.assertEqual(load_catalog(self.path)["profiles"][0]["wireApi"], "responses")
+
+    def test_v2_command_auth_headers_web_search_and_aliases_round_trip_and_render(self):
+        profile = {
+            "id": "35c5a9e6-148b-4ebd-b771-97cf3b04e982",
+            "providerId": "relay",
+            "name": "Relay",
+            "enabled": True,
+            "authMode": "command_token",
+            "baseUrl": "https://relay.example.invalid/v1",
+            "wireApi": "responses",
+            "authCommand": {
+                "command": "/usr/bin/printf",
+                "timeoutMilliseconds": 2000,
+                "refreshIntervalMilliseconds": 60000,
+                "workingDirectory": "/tmp",
+            },
+            "httpHeaders": {"X-Client": "Codex"},
+            "envHttpHeaders": {"Authorization": "RELAY_AUTH_HEADER"},
+            "model": "relay-model",
+            "models": ["relay-model"],
+            "supportsStandaloneWebSearch": True,
+            "legacyAliases": ["custom_legacy"],
+            "configOverrides": {},
+        }
+
+        save_catalog(self.path, {"schemaVersion": 2, "profiles": [profile]})
+        loaded = load_catalog(self.path)
+        provider, rendered = render_custom_profile_config('model_provider = "openai"\n', loaded["profiles"][0])
+
+        self.assertEqual(provider, "relay")
+        self.assertEqual(loaded["profiles"][0], profile)
+        self.assertIn('[model_providers.relay]', rendered)
+        self.assertIn('[model_providers.custom_legacy]', rendered)
+        self.assertIn('auth = { command = "/usr/bin/printf", timeout_ms = 2000, refresh_interval_ms = 60000, cwd = "/tmp" }', rendered)
+        self.assertIn('http_headers = { "X-Client" = "Codex" }', rendered)
+        self.assertIn('env_http_headers = { "Authorization" = "RELAY_AUTH_HEADER" }', rendered)
+        self.assertIn('supports_standalone_web_search = true', rendered)
+        self.assertNotIn("env_key", rendered)
+
+    def test_v2_rejects_reserved_duplicate_and_embedded_credential_headers(self):
+        base = {
+            "id": "35c5a9e6-148b-4ebd-b771-97cf3b04e982",
+            "providerId": "relay",
+            "name": "Relay",
+            "enabled": True,
+            "authMode": "environment_key",
+            "baseUrl": "https://relay.example.invalid/v1",
+            "wireApi": "responses",
+            "apiKeyEnv": "RELAY_API_KEY",
+            "model": "relay-model",
+            "httpHeaders": {},
+            "envHttpHeaders": {},
+            "supportsStandaloneWebSearch": False,
+            "legacyAliases": [],
+            "configOverrides": {},
+        }
+        for update in (
+            {"providerId": "openai"},
+            {"httpHeaders": {"Authorization": "embedded-secret"}},
+            {"envHttpHeaders": {"Authorization": "invalid env"}},
+        ):
+            with self.subTest(update=update), self.assertRaises(ProfileCatalogError):
+                save_catalog(self.path, {"schemaVersion": 2, "profiles": [base | update]})
+        duplicate = base | {"id": "70a1d044-7be6-440b-bcd4-e1499dd0fb9b"}
+        with self.assertRaises(ProfileCatalogError):
+            save_catalog(self.path, {"schemaVersion": 2, "profiles": [base, duplicate]})
 
 
 if __name__ == "__main__":

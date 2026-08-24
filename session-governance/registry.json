@@ -2,7 +2,7 @@
   "schema_version": 3,
   "project": "Lansi Codex Provider Manager",
   "governance_state": "ACTIVE",
-  "updated_at": "2026-08-18T07:30:04+00:00",
+  "updated_at": "2026-08-24T15:17:14+00:00",
   "sessions": [
     {
       "session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
@@ -20,30 +20,30 @@
       "role": "BRANCH",
       "status": "ACTIVE",
       "parent_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
-      "title": "LCP P3 LCP06 B1",
-      "active_acceptance_id": "LCP-06",
+      "title": "LCP P5 LCP08 B1",
+      "active_acceptance_id": "LCP-08",
       "mode": "VERIFY",
-      "scope": "Release close: all six core acceptance evidence is reconciled and the exact internal-candidate artifacts are ready; await explicit GitHub publication authorization.",
-      "forbidden_actions": "No push, merge, deployment, release publication, credential exposure",
-      "observed_at": "2026-08-18T07:06:38+00:00",
+      "scope": "LCP-08: Windows Provider v2 alignment to accepted macOS contract; iOS frozen",
+      "forbidden_actions": "No iOS changes, real Codex home writes, credential exposure, push, merge, deployment, or release publication",
+      "observed_at": "2026-08-24T13:04:46+00:00",
       "handoff": "handoffs/2026-08-17-lcp04-baseline-rebuild.md"
     }
   ],
-  "revision": 132,
+  "revision": 148,
   "current_main_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
   "program": {
-    "execution": "PAUSED",
-    "lifecycle": "PAUSED",
+    "execution": "CONTINUOUS",
+    "lifecycle": "RELEASE_CLOSE",
     "owner_session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
-    "current_phase_id": "P3",
-    "active_acceptance_id": "LCP-06",
+    "current_phase_id": "P5",
+    "active_acceptance_id": "LCP-08",
     "mode": "VERIFY",
-    "next_phase_id": "P3",
-    "next_acceptance_id": "RELEASE-CLOSE",
-    "candidate": "source candidate commit 668a54ef0c52461c00191d780c06afc3f583f9a3 plus local CI fix commit de05b89a5cddb27b9f45dda7a82afc49f0b0d02e awaiting GitHub push; internal-candidate artifacts and checksums ready.",
-    "pause_reason": "GitHub HTTPS transport is unreachable: HTTP/2 framing error followed by github.com:443 timeout after one HTTP/1.1 retry.",
+    "next_phase_id": "P5",
+    "next_acceptance_id": "LCP-09",
+    "candidate": "v0.2.0-internal.1 candidate: accepted macOS LCP-07 plus Windows LCP-08 final package with Restart Manager normal-exit repair and user-confirmed real-machine PASS; push and internal prerelease authorized; PR merge not authorized; iOS frozen",
+    "pause_reason": null,
     "blocked_items": [],
-    "updated_at": "2026-08-18T07:30:04+00:00",
-    "roadmap_digest": "sha256:ef88f32ddab599dbf560dfe3995434bb54bde6d6b825864238e80dff24414e8b"
+    "updated_at": "2026-08-24T15:17:14+00:00",
+    "roadmap_digest": "sha256:ae63bbe34e4fba30196e92a9a78ec4affcc97eb014fb31a082bf29084fc2e4c4"
   }
 }

@@ -34,6 +34,14 @@ PROVIDERS = {
 }
 
 CODEX_PROCESS_NAMES = {"chatgpt.exe", "codex.exe", "codex-code-mode-host.exe"}
+CODEX_DESKTOP_PROCESS_NAMES = {"chatgpt.exe", "codex.exe"}
+CODEX_AUXILIARY_ARGUMENT_MARKERS = (
+    "--type=renderer",
+    "--type=gpu-process",
+    "--type=utility",
+    "--crashpad-handler",
+    "crashpad_handler",
+)
 PhaseCallback = Callable[[str, str], None]
 
 
@@ -183,13 +191,15 @@ def render_custom_profile_config(
     model_catalog_path: Path | None = None,
 ) -> tuple[str, str]:
     profile_id = uuid.UUID(str(profile["id"]))
-    provider = f"custom_{profile_id.hex[:12]}"
-    auth_mode = str(profile["authMode"])
+    provider = str(profile.get("providerId") or f"custom_{profile_id.hex[:12]}").strip().lower()
+    auth_mode = {"api_key": "environment_key", "chatgpt_login": "openai_login"}.get(
+        str(profile["authMode"]), str(profile["authMode"])
+    )
     base_url = profile.get("baseUrl")
     wire_api = profile.get("wireApi")
-    environment_key = profile.get("apiKeyEnv") if auth_mode == "api_key" else None
+    environment_key = profile.get("apiKeyEnv") if auth_mode == "environment_key" else None
     model = str(profile.get("model") or "").strip()
-    if not model and auth_mode == "api_key":
+    if not model and auth_mode != "openai_login":
         raise ValueError("Custom Provider requires an explicit model; add one manually or fetch it from the upstream /models endpoint")
     if not model:
         model = "gpt-5.6-sol"
@@ -200,7 +210,10 @@ def render_custom_profile_config(
     blocks = [
         (name, block)
         for name, block in blocks
-        if name != f"model_providers.{provider}"
+        if name not in {
+            f"model_providers.{provider}",
+            *(f"model_providers.{alias}" for alias in profile.get("legacyAliases", []) if isinstance(alias, str)),
+        }
         and not _is_invalid_builtin_provider_override(name)
     ]
     root = _replace_root_key(root, "model", json.dumps(model), newline)
@@ -225,16 +238,50 @@ def render_custom_profile_config(
         rendered.extend(block)
         if rendered[-1].strip():
             rendered.append(newline)
-    rendered.append(f"[model_providers.{provider}]{newline}")
-    rendered.append(f"name = {json.dumps(str(profile['name']))}{newline}")
-    if base_url:
-        rendered.append(f"base_url = {json.dumps(str(base_url))}{newline}")
-    if wire_api:
-        rendered.append(f"wire_api = {json.dumps(str(wire_api))}{newline}")
-    if environment_key:
-        rendered.append(f"env_key = {json.dumps(str(environment_key))}{newline}")
-    if auth_mode == "chatgpt_login":
-        rendered.append(f"requires_openai_auth = true{newline}")
+    def render_map(values: object) -> str | None:
+        if not isinstance(values, dict) or not values:
+            return None
+        pairs = ", ".join(
+            f"{json.dumps(str(key))} = {json.dumps(str(value))}"
+            for key, value in sorted(values.items())
+        )
+        return "{ " + pairs + " }"
+
+    def provider_block(identifier: str) -> list[str]:
+        block = [
+            f"[model_providers.{identifier}]{newline}",
+            f"name = {json.dumps(str(profile['name']))}{newline}",
+        ]
+        if base_url:
+            block.append(f"base_url = {json.dumps(str(base_url))}{newline}")
+        block.append(f'wire_api = "responses"{newline}')
+        if environment_key:
+            block.append(f"env_key = {json.dumps(str(environment_key))}{newline}")
+        if auth_mode == "openai_login":
+            block.append(f"requires_openai_auth = true{newline}")
+        if auth_mode == "command_token":
+            command = profile.get("authCommand") if isinstance(profile.get("authCommand"), dict) else {}
+            parts = [f"command = {json.dumps(str(command.get('command', '')))}"]
+            parts.append(f"timeout_ms = {int(command.get('timeoutMilliseconds', 10000))}")
+            if command.get("refreshIntervalMilliseconds") is not None:
+                parts.append(f"refresh_interval_ms = {int(command['refreshIntervalMilliseconds'])}")
+            if command.get("workingDirectory"):
+                parts.append(f"cwd = {json.dumps(str(command['workingDirectory']))}")
+            block.append("auth = { " + ", ".join(parts) + f" }}{newline}")
+        fixed_headers = render_map(profile.get("httpHeaders"))
+        environment_headers = render_map(profile.get("envHttpHeaders"))
+        if fixed_headers:
+            block.append(f"http_headers = {fixed_headers}{newline}")
+        if environment_headers:
+            block.append(f"env_http_headers = {environment_headers}{newline}")
+        if profile.get("supportsStandaloneWebSearch"):
+            block.append(f"supports_standalone_web_search = true{newline}")
+        return block
+
+    rendered.extend(provider_block(provider))
+    for alias in profile.get("legacyAliases", []):
+        if isinstance(alias, str) and alias != provider:
+            rendered.extend(provider_block(alias))
     return provider, "".join(rendered).rstrip() + newline
 
 
@@ -663,7 +710,7 @@ def _pid_is_alive(pid: object) -> bool:
         return False
     if os.name == "nt":
         # On Windows, ``os.kill(pid, 0)`` is not the harmless existence probe it is on
-        # POSIX: CPython delegates non-console signals to TerminateProcess, so a lock
+        # POSIX: CPython delegates non-console signals to a force-termination API, so a lock
         # check can terminate the process it is checking. Query the process handle
         # instead and fail closed (alive) when access or the probe itself is uncertain.
         try:
@@ -979,12 +1026,81 @@ def _codex_processes_from_tasklist() -> tuple[str, ...]:
     )
 
 
+def _codex_process_records_from_powershell() -> tuple[dict[str, object], ...]:
+    """Read names and command lines so helper processes can be ignored safely."""
+
+    if os.name != "nt":
+        return ()
+    command = (
+        "$names=@('ChatGPT.exe','Codex.exe','codex-code-mode-host.exe');"
+        "@(Get-CimInstance Win32_Process | Where-Object { $names -contains $_.Name } | "
+        "Select-Object ProcessId,ParentProcessId,Name,CommandLine) | ConvertTo-Json -Compress"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            capture_output=True,
+            check=True,
+            text=True,
+            errors="replace",
+            timeout=8,
+        )
+        payload = json.loads(result.stdout or "[]")
+    except (OSError, subprocess.SubprocessError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+        raise _CodexProcessProbeError("PowerShell process command-line probe is unavailable") from error
+    if isinstance(payload, dict):
+        payload = [payload]
+    if not isinstance(payload, list):
+        raise _CodexProcessProbeError("PowerShell process command-line probe returned invalid data")
+    return tuple(record for record in payload if isinstance(record, dict))
+
+
+def _managed_runtime_processes(records: tuple[dict[str, object], ...]) -> tuple[str, ...]:
+    """Select only the desktop main process and its managed Codex app-server."""
+
+    managed: list[str] = []
+    for record in records:
+        name = str(record.get("Name") or "").casefold()
+        command_line = str(record.get("CommandLine") or "")
+        lowered = command_line.casefold()
+        if name not in CODEX_PROCESS_NAMES:
+            continue
+        if any(marker in lowered for marker in CODEX_AUXILIARY_ARGUMENT_MARKERS):
+            continue
+        is_managed_app_server = (
+            "app-server" in lowered and "--analytics-default-enabled" in lowered
+        )
+        is_desktop_main = name in CODEX_DESKTOP_PROCESS_NAMES and "app-server" not in lowered
+        if is_desktop_main or is_managed_app_server:
+            managed.append(str(record.get("Name") or name))
+    return tuple(managed)
+
+
+def _desktop_main_process_ids(records: tuple[dict[str, object], ...]) -> tuple[int, ...]:
+    process_ids: list[int] = []
+    for record in records:
+        name = str(record.get("Name") or "").casefold()
+        lowered = str(record.get("CommandLine") or "").casefold()
+        if name not in CODEX_DESKTOP_PROCESS_NAMES or "app-server" in lowered:
+            continue
+        if any(marker in lowered for marker in CODEX_AUXILIARY_ARGUMENT_MARKERS):
+            continue
+        process_id = record.get("ProcessId")
+        if isinstance(process_id, int) and process_id > 0:
+            process_ids.append(process_id)
+    return tuple(process_ids)
+
+
 def _codex_processes() -> tuple[str, ...]:
     """Return running Codex process images, or fail closed when both probes fail."""
 
     if os.name != "nt":
         return ()
     failures: list[_CodexProcessProbeError] = []
+    try:
+        return _managed_runtime_processes(_codex_process_records_from_powershell())
+    except _CodexProcessProbeError as error:
+        failures.append(error)
     for probe in (_codex_processes_from_toolhelp, _codex_processes_from_tasklist):
         try:
             return probe()
@@ -1101,16 +1217,110 @@ def _post_close_to_codex_windows(process_ids: tuple[int, ...]) -> int:
         raise CodexProcessProbeError("无法向 Codex 发送正常关闭请求。请手动关闭 Codex 后重试。") from error
 
 
+def _request_windows_restart_manager_shutdown(process_ids: tuple[int, ...]) -> bool:
+    """Ask Windows Restart Manager to close the desktop app without forcing it."""
+
+    if os.name != "nt" or not process_ids:
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class UniqueProcess(ctypes.Structure):
+            _fields_ = [
+                ("dwProcessId", wintypes.DWORD),
+                ("ProcessStartTime", wintypes.FILETIME),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        restart_manager = ctypes.WinDLL("rstrtmgr", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.GetProcessTimes.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+            ctypes.POINTER(wintypes.FILETIME),
+        ]
+        kernel32.GetProcessTimes.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        restart_manager.RmStartSession.argtypes = [
+            ctypes.POINTER(wintypes.DWORD), wintypes.DWORD, wintypes.LPWSTR
+        ]
+        restart_manager.RmStartSession.restype = wintypes.DWORD
+        restart_manager.RmRegisterResources.argtypes = [
+            wintypes.DWORD,
+            wintypes.UINT,
+            ctypes.POINTER(wintypes.LPCWSTR),
+            wintypes.UINT,
+            ctypes.POINTER(UniqueProcess),
+            wintypes.UINT,
+            ctypes.POINTER(wintypes.LPCWSTR),
+        ]
+        restart_manager.RmRegisterResources.restype = wintypes.DWORD
+        restart_manager.RmShutdown.argtypes = [wintypes.DWORD, wintypes.ULONG, ctypes.c_void_p]
+        restart_manager.RmShutdown.restype = wintypes.DWORD
+        restart_manager.RmEndSession.argtypes = [wintypes.DWORD]
+        restart_manager.RmEndSession.restype = wintypes.DWORD
+
+        unique_processes: list[UniqueProcess] = []
+        for process_id in process_ids:
+            handle = kernel32.OpenProcess(0x1000, False, process_id)
+            if not handle:
+                continue
+            try:
+                creation = wintypes.FILETIME()
+                exit_time = wintypes.FILETIME()
+                kernel_time = wintypes.FILETIME()
+                user_time = wintypes.FILETIME()
+                if kernel32.GetProcessTimes(
+                    handle,
+                    ctypes.byref(creation),
+                    ctypes.byref(exit_time),
+                    ctypes.byref(kernel_time),
+                    ctypes.byref(user_time),
+                ):
+                    unique_processes.append(UniqueProcess(process_id, creation))
+            finally:
+                kernel32.CloseHandle(handle)
+        if not unique_processes:
+            return False
+
+        session_handle = wintypes.DWORD()
+        session_key = ctypes.create_unicode_buffer(64)
+        if restart_manager.RmStartSession(ctypes.byref(session_handle), 0, session_key) != 0:
+            return False
+        try:
+            process_array = (UniqueProcess * len(unique_processes))(*unique_processes)
+            if restart_manager.RmRegisterResources(
+                session_handle.value, 0, None, len(unique_processes), process_array, 0, None
+            ) != 0:
+                return False
+            return restart_manager.RmShutdown(session_handle.value, 0, None) == 0
+        finally:
+            restart_manager.RmEndSession(session_handle.value)
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return False
+
+
 def request_codex_graceful_shutdown(wait_seconds: float = 8.0, *, tick: object | None = None) -> dict[str, object]:
     """Request a normal Codex window close, then fail closed until it has exited.
 
-    This deliberately never uses ``taskkill`` or another force-termination path:
-    a running Codex process may still be writing sessions or the history database.
+    A running Codex process may still be writing sessions or the history database,
+    so refusal or timeout always fails before provider configuration is modified.
     """
 
     processes = _codex_processes()
     if not processes:
         return {"requested": False, "closed": True, "windows": 0}
+    main_process_ids: tuple[int, ...] = ()
+    try:
+        records = _codex_process_records_from_powershell()
+        main_process_ids = _desktop_main_process_ids(records)
+    except _CodexProcessProbeError:
+        pass
     try:
         process_ids = _codex_process_ids_from_toolhelp()
     except _CodexProcessProbeError as error:
@@ -1118,6 +1328,9 @@ def request_codex_graceful_shutdown(wait_seconds: float = 8.0, *, tick: object |
     if not process_ids:
         raise CodexRunningError("Codex 正在运行，但没有可正常关闭的窗口；请手动关闭 Codex 后重试。")
     windows = _post_close_to_codex_windows(process_ids)
+    restart_manager_requested = _request_windows_restart_manager_shutdown(main_process_ids)
+    if windows == 0 and not restart_manager_requested:
+        raise CodexRunningError("Codex 正在运行，但未接受正常退出请求；请手动退出 Codex 后重试。")
     deadline = time.monotonic() + max(0.0, wait_seconds)
     started = time.monotonic()
     while True:
@@ -1132,41 +1345,17 @@ def request_codex_graceful_shutdown(wait_seconds: float = 8.0, *, tick: object |
 
 
 def stop_codex_process_tree(*, tick: object | None = None) -> dict[str, object]:
-    """Close every Codex process tree before changing the shared home."""
+    """Request a normal desktop exit before changing the shared Codex home."""
 
     if os.name != "nt":
         _assert_codex_quiescent()
         return {"requested": False, "terminated": False, "remaining": 0}
-    processes = _codex_processes()
-    if not processes:
-        return {"requested": False, "terminated": False, "remaining": 0}
-    try:
-        process_ids = _codex_process_ids_from_toolhelp()
-    except _CodexProcessProbeError as error:
-        raise CodexProcessProbeError("无法定位 Codex 进程。请关闭 Codex 后重试。") from error
-    if not process_ids:
-        raise CodexRunningError("发现 Codex 正在运行，但无法取得进程编号。请关闭 Codex 后重试。")
-    system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
-    taskkill = str(Path(system_root) / "System32" / "taskkill.exe") if system_root else "taskkill.exe"
-    for process_id in process_ids:
-        subprocess.run(
-            [taskkill, "/PID", str(process_id), "/T", "/F"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    deadline = time.monotonic() + 15.0
-    started = time.monotonic()
-    while True:
-        remaining = _codex_processes()
-        if not remaining:
-            return {"requested": True, "terminated": True, "remaining": 0}
-        if time.monotonic() >= deadline:
-            raise CodexRunningError("无法关闭全部 Codex 进程；为保护会话与设置，切换已停止。")
-        if tick is not None:
-            tick(time.monotonic() - started)
-        time.sleep(0.2)
+    result = request_codex_graceful_shutdown(wait_seconds=15.0, tick=tick)
+    return {
+        "requested": bool(result["requested"]),
+        "terminated": False,
+        "remaining": 0,
+    }
 
 
 def _installed_codex_executable() -> Path | None:
@@ -1322,6 +1511,7 @@ def switch_provider(
     target_env_key: str | None = None,
     target_base_url: str | None = None,
     target_wire_api: str | None = None,
+    cleanup_env_keys: tuple[str, ...] = (),
     phase_callback: PhaseCallback | None = None,
 ) -> dict[str, object]:
     definition = _validate_provider(provider)
@@ -1341,7 +1531,11 @@ def switch_provider(
         else None
     )
     target_env_key = target_env_key or (str(PROVIDERS[provider]["env_key"]) if PROVIDERS[provider].get("env_key") else None)
-    previous_env_value = _read_user_environment_value(previous_env_key) if previous_env_key != target_env_key else None
+    cleanup_keys = {
+        key for key in (*cleanup_env_keys, previous_env_key)
+        if isinstance(key, str) and key and key != target_env_key
+    }
+    cleared_env_values: dict[str, str | None] = {}
     runtime_stopped = False
     runtime_launched = False
     old_key_cleared = False
@@ -1459,10 +1653,10 @@ def switch_provider(
             if os.name == "nt" and not _test_runtime_mode() and target_env_key and _read_user_environment_value(target_env_key) is None:
                 raise RuntimeError("当前服务的访问密钥未找到，切换已回滚。")
             result["verified_provider"] = True
-            if previous_env_key and previous_env_key != target_env_key:
-                _clear_user_environment_value(previous_env_key)
-                old_key_cleared = True
-                result["old_api_key_cleared"] = True
+            for environment_key in sorted(cleanup_keys):
+                cleared_env_values[environment_key] = _clear_user_environment_value(environment_key)
+            old_key_cleared = bool(cleanup_keys)
+            result["old_api_key_cleared"] = old_key_cleared
             _verify_preservation(
                 preservation_before, _preservation_snapshot(config_dir, state_db_path)
             )
@@ -1494,7 +1688,8 @@ def switch_provider(
                 preservation_before, _preservation_snapshot(config_dir, state_db_path)
             )
             if old_key_cleared:
-                _restore_user_environment_value(previous_env_key, previous_env_value)
+                for environment_key, value in cleared_env_values.items():
+                    _restore_user_environment_value(environment_key, value)
             if runtime_stopped and not runtime_launched:
                 try:
                     launch_codex_desktop(target_env_key=previous_env_key)
@@ -1514,6 +1709,7 @@ def switch_custom_profile(
     dry_run: bool = False,
     *,
     model_catalog_path: Path | None = None,
+    cleanup_env_keys: tuple[str, ...] = (),
     phase_callback: PhaseCallback | None = None,
 ) -> dict[str, object]:
     if not profile.get("enabled", False):
@@ -1523,9 +1719,12 @@ def switch_custom_profile(
         profile,
         model_catalog_path=model_catalog_path,
     )
+    auth_mode = {"api_key": "environment_key", "chatgpt_login": "openai_login"}.get(
+        str(profile["authMode"]), str(profile["authMode"])
+    )
     PROVIDERS[provider] = {
         "display_name": str(profile["name"]),
-        "env_key": str(profile["apiKeyEnv"]) if profile["authMode"] == "api_key" else None,
+        "env_key": str(profile["apiKeyEnv"]) if auth_mode == "environment_key" else None,
         "model": str(profile["model"]),
         "reasoning_effort": str(profile.get("reasoningEffort") or "medium"),
         "review_model": str(profile["reviewModel"]) if profile.get("reviewModel") else None,
@@ -1536,9 +1735,10 @@ def switch_custom_profile(
         state_db_path,
         dry_run,
         rendered,
-        target_env_key=str(profile["apiKeyEnv"]) if profile["authMode"] == "api_key" else None,
+        target_env_key=str(profile["apiKeyEnv"]) if auth_mode == "environment_key" else None,
         target_base_url=str(profile["baseUrl"]) if profile.get("baseUrl") else None,
         target_wire_api=str(profile["wireApi"]) if profile.get("wireApi") else None,
+        cleanup_env_keys=cleanup_env_keys,
         phase_callback=phase_callback,
     )
 

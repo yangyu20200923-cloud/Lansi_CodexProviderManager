@@ -107,7 +107,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
             let configURL = codexHome.appendingPathComponent("config.toml")
             let currentConfig = try CodexConfigService().read(from: configURL)
             if let raw = currentConfig.activeProvider,
-               let profile = availableProfiles.first(where: { $0.configProviderID == raw }) {
+               let profile = availableProfiles.first(where: { $0.configProviderID == raw || $0.legacyAliases.contains(raw) }) {
                 previousProfile = profile
             }
             backup = try backupService.create(codexHome: codexHome)
@@ -144,7 +144,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
                 reasoningEffort: threadSettings.reasoningEffort
             )
             try SessionMetadataSyncService(codexHome: codexHome).verify(provider: profile.configProviderID)
-            try chatGPT.setEnvironment(profile: profile, key: key)
+            try chatGPT.setEnvironment(profile: profile, key: key, clearing: availableProfiles)
             logSwitch("environment set for \(profile.configProviderID)")
             onPhase?(.verifying, "正在校验目标 Provider 配置…")
             try chatGPT.verifyConfiguration(codexHome: codexHome, profile: profile, key: key)
@@ -191,7 +191,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
                 logSwitch("recovery restored backup \(backup.backupID)")
                 try ModelCatalogRenderer.synchronize(for: previousProfile, codexHome: codexHome)
                 let previousKey = previousProfile.requiresAPIKey ? try keychain.read(provider: previousProfile.id) : nil
-                try chatGPT.setEnvironment(profile: previousProfile, key: previousKey)
+                try chatGPT.setEnvironment(profile: previousProfile, key: previousKey, clearing: availableProfiles)
                 try chatGPT.verifyConfiguration(codexHome: codexHome, profile: previousProfile, key: previousKey)
                 try await chatGPT.launch()
                 try await chatGPT.verifyLaunchedRuntime(profile: previousProfile)
@@ -245,7 +245,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
             try await chatGPT.waitUntilQuiescent(timeout: 15)
             try backupService.restore(targetBackup, to: codexHome)
             guard let restoredID = try CodexConfigService().read(from: codexHome.appendingPathComponent("config.toml")).activeProvider,
-                  let restoredProfile = availableProfiles.first(where: { $0.configProviderID == restoredID }) else {
+                  let restoredProfile = availableProfiles.first(where: { $0.configProviderID == restoredID || $0.legacyAliases.contains(restoredID) }) else {
                 throw RestoreFailure.profileUnavailable
             }
             try ModelCatalogRenderer.synchronize(for: restoredProfile, codexHome: codexHome)
@@ -253,7 +253,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
             if restoredProfile.requiresAPIKey && (key?.isEmpty != false) {
                 throw KeychainError.invalidData
             }
-            try chatGPT.setEnvironment(profile: restoredProfile, key: key)
+            try chatGPT.setEnvironment(profile: restoredProfile, key: key, clearing: availableProfiles)
             try chatGPT.verifyConfiguration(codexHome: codexHome, profile: restoredProfile, key: key)
             try await chatGPT.launch()
             launchedRestoredRuntime = true
@@ -276,7 +276,7 @@ public final class ProviderSwitchCoordinator: @unchecked Sendable {
                 }
                 try backupService.restore(recoveryBackup, to: codexHome)
                 let key = currentProfile.requiresAPIKey ? try keychain.read(provider: currentProfile.id) : nil
-                try chatGPT.setEnvironment(profile: currentProfile, key: key)
+                try chatGPT.setEnvironment(profile: currentProfile, key: key, clearing: availableProfiles)
                 try chatGPT.verifyConfiguration(codexHome: codexHome, profile: currentProfile, key: key)
                 try await chatGPT.launch()
                 try await chatGPT.verifyLaunchedRuntime(profile: currentProfile)

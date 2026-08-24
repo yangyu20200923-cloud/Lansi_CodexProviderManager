@@ -159,9 +159,8 @@ public final class CodexConfigService: @unchecked Sendable {
             try upsertRoot("model_reasoning_effort", profile.reasoningEffort.map { Self.quote($0) })
             try upsertRoot("review_model", profile.reviewModel.map { Self.quote($0) })
             try upsertTable("history", key: "persistence", value: "\"save-all\"")
-            func upsertManagedProvider(_ id: ProviderID) throws {
-                let managedProfile = id == profile.id ? profile : ProviderDefaults.profile(for: id)
-                let providerHeader = "[model_providers.\(managedProfile.configProviderID)]"
+            func upsertManagedProvider(_ managedProfile: ProviderProfile, configID: String) throws {
+                let providerHeader = "[model_providers.\(configID)]"
                 let headerIndex: Int
                 if let existing = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == providerHeader }) {
                     headerIndex = existing
@@ -180,17 +179,23 @@ public final class CodexConfigService: @unchecked Sendable {
                     let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
                     guard let equals = trimmed.firstIndex(of: "=") else { continue }
                     let key = trimmed[..<equals].trimmingCharacters(in: .whitespaces)
-                    if ["name", "base_url", "wire_api", "env_key", "requires_openai_auth"].contains(key) {
+                    if [
+                        "name", "base_url", "wire_api", "env_key", "requires_openai_auth",
+                        "experimental_bearer_token", "auth", "http_headers", "env_http_headers",
+                        "supports_standalone_web_search"
+                    ].contains(key) {
                         if !seen.insert(key).inserted { throw CodexConfigError.duplicateKey(key) }
                         let renderedValue: String?
                         switch key {
-                        case "name":
-                            let name = id == .qilin ? "Qilin OpenAI-compatible API" : id == .vectorEngine ? "VectorEngine OpenAI-compatible API" : managedProfile.displayName
-                            renderedValue = Self.quote(name)
-                        case "base_url": renderedValue = Self.forcedBaseURL(for: id, profile: managedProfile).map(Self.quote)
+                        case "name": renderedValue = Self.quote(Self.providerDisplayName(managedProfile))
+                        case "base_url": renderedValue = Self.forcedBaseURL(for: managedProfile.id, profile: managedProfile).map(Self.quote)
                         case "wire_api": renderedValue = managedProfile.wireAPI.map(Self.quote)
                         case "env_key": renderedValue = managedProfile.requiresAPIKey ? managedProfile.apiKeyEnvironment.map(Self.quote) : nil
-                        case "requires_openai_auth": renderedValue = managedProfile.authMode == .chatGPTLogin ? "true" : nil
+                        case "requires_openai_auth": renderedValue = managedProfile.authMode == .openAILogin ? "true" : nil
+                        case "auth": renderedValue = Self.renderAuth(managedProfile.authCommand, enabled: managedProfile.authMode == .commandToken)
+                        case "http_headers": renderedValue = Self.renderTable(managedProfile.httpHeaders)
+                        case "env_http_headers": renderedValue = Self.renderTable(managedProfile.environmentHTTPHeaders)
+                        case "supports_standalone_web_search": renderedValue = managedProfile.supportsStandaloneWebSearch ? "true" : nil
                         default: renderedValue = nil
                         }
                         if let renderedValue { lines[index] = "\(key) = \(renderedValue)" }
@@ -199,11 +204,15 @@ public final class CodexConfigService: @unchecked Sendable {
                 }
                 for index in removals.reversed() { lines.remove(at: index) }
                 let required: [(String, String?)] = [
-                    ("name", Self.quote(id == .qilin ? "Qilin OpenAI-compatible API" : id == .vectorEngine ? "VectorEngine OpenAI-compatible API" : managedProfile.displayName)),
-                    ("base_url", Self.forcedBaseURL(for: id, profile: managedProfile).map(Self.quote)),
+                    ("name", Self.quote(Self.providerDisplayName(managedProfile))),
+                    ("base_url", Self.forcedBaseURL(for: managedProfile.id, profile: managedProfile).map(Self.quote)),
                     ("wire_api", managedProfile.wireAPI.map(Self.quote)),
                     ("env_key", managedProfile.requiresAPIKey ? managedProfile.apiKeyEnvironment.map(Self.quote) : nil),
-                    ("requires_openai_auth", managedProfile.authMode == .chatGPTLogin ? "true" : nil)
+                    ("requires_openai_auth", managedProfile.authMode == .openAILogin ? "true" : nil),
+                    ("auth", Self.renderAuth(managedProfile.authCommand, enabled: managedProfile.authMode == .commandToken)),
+                    ("http_headers", Self.renderTable(managedProfile.httpHeaders)),
+                    ("env_http_headers", Self.renderTable(managedProfile.environmentHTTPHeaders)),
+                    ("supports_standalone_web_search", managedProfile.supportsStandaloneWebSearch ? "true" : nil)
                 ]
                 var insertion = blockEnd - removals.count
                 for (key, value) in required where !seen.contains(key) {
@@ -211,10 +220,15 @@ public final class CodexConfigService: @unchecked Sendable {
                 }
             }
             if profile.id == .qilin || profile.id == .vectorEngine {
-                try upsertManagedProvider(.qilin)
-                try upsertManagedProvider(.vectorEngine)
+                let qilin = profile.id == .qilin ? profile : ProviderDefaults.profile(for: .qilin)
+                let vector = profile.id == .vectorEngine ? profile : ProviderDefaults.profile(for: .vectorEngine)
+                try upsertManagedProvider(qilin, configID: "qilin")
+                try upsertManagedProvider(vector, configID: "vectorengine")
             } else {
-                try upsertManagedProvider(profile.id)
+                try upsertManagedProvider(profile, configID: profile.configProviderID)
+                for alias in profile.legacyAliases where alias != profile.configProviderID {
+                    try upsertManagedProvider(profile, configID: alias)
+                }
             }
         }
 
@@ -244,6 +258,36 @@ public final class CodexConfigService: @unchecked Sendable {
 
     private static func quote(_ value: String) -> String {
         "\"" + value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    private static func renderTable(_ values: [String: String]) -> String? {
+        guard !values.isEmpty else { return nil }
+        let fields = values.keys.sorted().compactMap { key -> String? in
+            guard let value = values[key] else { return nil }
+            return "\(quote(key)) = \(quote(value))"
+        }
+        return "{ " + fields.joined(separator: ", ") + " }"
+    }
+
+    private static func renderAuth(_ command: ProviderAuthCommand?, enabled: Bool) -> String? {
+        guard enabled, let command else { return nil }
+        var fields = [
+            "command = \(quote(command.command))",
+            "timeout_ms = \(command.timeoutMilliseconds)"
+        ]
+        if let refresh = command.refreshIntervalMilliseconds {
+            fields.append("refresh_interval_ms = \(refresh)")
+        }
+        if let directory = command.workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines), !directory.isEmpty {
+            fields.append("cwd = \(quote(directory))")
+        }
+        return "{ " + fields.joined(separator: ", ") + " }"
+    }
+
+    private static func providerDisplayName(_ profile: ProviderProfile) -> String {
+        if profile.id == .qilin { return "Qilin OpenAI-compatible API" }
+        if profile.id == .vectorEngine { return "VectorEngine OpenAI-compatible API" }
+        return profile.displayName
     }
 
     /// Some third-party Providers require their versioned `/v1` base URL; a bare

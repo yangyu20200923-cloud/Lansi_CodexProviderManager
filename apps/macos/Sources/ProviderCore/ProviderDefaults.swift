@@ -3,8 +3,9 @@ public enum ProviderDefaults {
         if id == .openAI {
             return ProviderProfile(
                 id: .openAI,
+                providerID: "openai",
                 displayName: "OpenAI / ChatGPT",
-                authMode: .chatGPTLogin,
+                authMode: .openAILogin,
                 baseURL: nil,
                 wireAPI: nil,
                 model: nil,
@@ -14,8 +15,9 @@ public enum ProviderDefaults {
         if id == .qilin {
             return ProviderProfile(
                 id: .qilin,
+                providerID: "qilin",
                 displayName: "Qilin",
-                authMode: .apiKey,
+                authMode: .environmentKey,
                 baseURL: "https://www.qilinapi.com/v1",
                 wireAPI: "responses",
                 apiKeyEnvironment: "QILIN_API_KEY",
@@ -29,8 +31,9 @@ public enum ProviderDefaults {
         if id == .vectorEngine {
             return ProviderProfile(
                 id: .vectorEngine,
+                providerID: "vectorengine",
                 displayName: "VectorEngine",
-                authMode: .apiKey,
+                authMode: .environmentKey,
                 baseURL: "https://api.vectorengine.cn/v1",
                 wireAPI: "responses",
                 apiKeyEnvironment: "VECTORENGINE_API_KEY",
@@ -44,7 +47,7 @@ public enum ProviderDefaults {
         return ProviderProfile(
             id: id,
             displayName: "Custom Provider",
-            authMode: .apiKey,
+            authMode: .environmentKey,
             baseURL: nil,
             wireAPI: "responses",
             apiKeyEnvironment: nil,

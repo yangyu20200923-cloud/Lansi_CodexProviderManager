@@ -46,7 +46,7 @@ final class ProfileTransferTests: XCTestCase {
         let imported = try ProfileTransfer.importProfile(from: JSONEncoder().encode(legacy))
 
         XCTAssertEqual(imported.id, legacy.id)
-        XCTAssertEqual(imported.authMode, .apiKey)
+        XCTAssertEqual(imported.authMode, .environmentKey)
         XCTAssertEqual(imported.displayName, legacy.displayName)
         XCTAssertFalse(imported.hasStoredKey)
     }
@@ -71,5 +71,22 @@ final class ProfileTransferTests: XCTestCase {
 
         XCTAssertThrowsError(try ProfileTransfer.importProfile(from: Data(unsafe.utf8)))
         XCTAssertThrowsError(try ProfileTransfer.importProfile(from: Data(override.utf8)))
+    }
+
+    func testProviderV2TransferRoundTripsNewContractFields() throws {
+        let original = ProviderProfile(
+            id: ProviderID.custom(), providerID: "relay", displayName: "Relay",
+            authMode: .commandToken, baseURL: "https://api.example.invalid/v1", wireAPI: "responses",
+            authCommand: ProviderAuthCommand(command: "/usr/bin/printf", refreshIntervalMilliseconds: 60_000),
+            httpHeaders: ["X-Client": "Codex"], environmentHTTPHeaders: ["Authorization": "RELAY_AUTH_HEADER"],
+            model: "relay-model", supportsStandaloneWebSearch: true, legacyAliases: ["custom_legacy"], isBuiltIn: false
+        )
+
+        let data = try ProfileTransfer.export(original)
+        let imported = try ProfileTransfer.importProfile(from: data)
+        let catalog = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+
+        XCTAssertEqual(catalog?["schemaVersion"] as? Int, 2)
+        XCTAssertEqual(imported, original)
     }
 }

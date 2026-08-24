@@ -10,17 +10,17 @@ home and no merge, publication, signing, notarization, or release authority.
 | Field | Value |
 | --- | --- |
 | Execution | `CONTINUOUS` |
-| Lifecycle | `RELEASE_CLOSE` |
+| Lifecycle | `ADVANCE` |
 | Current Phase | `P5` — Windows Provider v2 alignment |
 | Current acceptance | `LCP-08` / `VERIFY` |
 | Next Phase | `P5` |
 | Next acceptance | `LCP-09` — close cross-platform Provider v2 migration and exchange |
-| Exact candidate | `v0.2.0-internal.1` candidate on `agent/lcp-phase0-rescue-20260810`: accepted macOS LCP-07 implementation plus Windows Provider v2 package with Restart Manager normal-exit repair; iOS frozen. |
-| Active delta | Publish the user-accepted Windows Provider v2 repair and matching macOS source as a clearly labelled internal candidate with exact checksums. `LCP-09` cross-platform package exchange remains the next unmet acceptance item. iOS is frozen and excluded. |
+| Exact candidate | Published prerelease `v0.2.0-internal.1` at commit `d0d495c3d3cbce01ca22e4e64d7551525ba80655`: accepted macOS LCP-07 implementation plus Windows Provider v2 package with Restart Manager normal-exit repair; iOS frozen. |
+| Active delta | `LCP-08` release close is complete. Advance to `LCP-09` exact packaged cross-platform migration and exchange without merging PR #2 or changing the frozen iOS scope. |
 | Pause reason | None. |
 | Windows implementation | Windows 原生编辑器现与 macOS 对齐：上游模型仅暂存并由用户加入受管列表。切换链路会预检目标 API、验证访问密钥并清除其他 Provider 的用户环境变量。运行时先向可见主窗口发送 `WM_CLOSE`，再通过 Windows Restart Manager 对识别出的桌面主进程请求非强制正常退出，解决窗口关闭后后台进程继续驻留的问题；静止判定只等待主程序与带 `--analytics-default-enabled` 的受管 app-server，忽略 renderer、crashpad 和独立 `app-server --listen stdio://`。正常退出被拒绝或超时会在备份和配置写入前明确失败，代码中不存在强制终止路径。随后重启 Codex 并验证配置、环境和历史别名。 |
-| Latest evidence | `2026-08-24`: Windows Restart Manager 修复后自动回归 `131/131 PASS`；用户已使用 `22:59` 构建的最终 EXE/portable ZIP 完成真机 Provider 切换复验，正常关闭、真实切换、重启与读回均通过。发布资产 SHA-256 为 EXE `52baa3e8941ef4dcf50e9f0f053b03811a8202217978910fafa80872b1fbbb01`、ZIP `341d192e9e422b85bad67aaca5d4e3ee93369b018d880fc8b5e37c246f122997`。macOS 支持修复保留 `109/109 PASS`；iOS 未改动。 |
-| Current verdict | `LCP-08 PASS`：Windows Provider v2 最终包已通过真机复验。本次获明确授权推送分支并发布内部候选 Release，不授权合并 PR；发布收口后导航到 `LCP-09`。 |
+| Latest evidence | `2026-08-24`: Windows Restart Manager 修复后自动回归 `131/131 PASS`；用户已使用 `22:59` 构建的最终 EXE/portable ZIP 完成真机 Provider 切换复验，正常关闭、真实切换、重启与读回均通过。PR #2 的 repository/Windows/macOS CI 在 `d0d495c` 全部通过。`v0.2.0-internal.1` 已发布为 GitHub prerelease，含 macOS DMG、Windows EXE/ZIP 和 SHA-256 清单；iOS 未改动。 |
+| Current verdict | `LCP-08 PASS` 且内部候选发布完成：`v0.2.0-internal.1` 固定到 `d0d495c`。PR #2 保持开放且未合并；下一验收为 `LCP-09`。 |
 | Last reconciled | `2026-08-24` |
 
 ## Phase Map

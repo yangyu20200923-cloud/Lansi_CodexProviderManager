@@ -2,7 +2,7 @@
   "schema_version": 3,
   "project": "Lansi Codex Provider Manager",
   "governance_state": "ACTIVE",
-  "updated_at": "2026-08-24T15:17:14+00:00",
+  "updated_at": "2026-08-24T15:36:45+00:00",
   "sessions": [
     {
       "session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
@@ -29,21 +29,21 @@
       "handoff": "handoffs/2026-08-17-lcp04-baseline-rebuild.md"
     }
   ],
-  "revision": 148,
+  "revision": 149,
   "current_main_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
   "program": {
     "execution": "CONTINUOUS",
-    "lifecycle": "RELEASE_CLOSE",
+    "lifecycle": "ADVANCE",
     "owner_session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
     "current_phase_id": "P5",
     "active_acceptance_id": "LCP-08",
     "mode": "VERIFY",
     "next_phase_id": "P5",
     "next_acceptance_id": "LCP-09",
-    "candidate": "v0.2.0-internal.1 candidate: accepted macOS LCP-07 plus Windows LCP-08 final package with Restart Manager normal-exit repair and user-confirmed real-machine PASS; push and internal prerelease authorized; PR merge not authorized; iOS frozen",
+    "candidate": "published prerelease v0.2.0-internal.1 at d0d495c: macOS LCP-07 plus user-accepted Windows LCP-08 Provider v2 package; PR #2 open and unmerged; next LCP-09; iOS frozen",
     "pause_reason": null,
     "blocked_items": [],
-    "updated_at": "2026-08-24T15:17:14+00:00",
-    "roadmap_digest": "sha256:ae63bbe34e4fba30196e92a9a78ec4affcc97eb014fb31a082bf29084fc2e4c4"
+    "updated_at": "2026-08-24T15:36:45+00:00",
+    "roadmap_digest": "sha256:19a54a081b0f5c1f6f83284137677473f4f1d3f285d6e57be316648aee203de1"
   }
 }

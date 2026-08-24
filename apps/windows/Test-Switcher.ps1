@@ -5,17 +5,20 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Push-Location $PSScriptRoot
+$env:LANSI_PROVIDER_MANAGER_TEST_MODE = '1'
 try {
     Write-Host '[1/5] Python compilation'
-    & python -m py_compile switch_provider.py
+    & python -m py_compile switch_provider.py desktop_app.py
     if ($LASTEXITCODE -ne 0) { throw 'Python compilation failed.' }
 
-    Write-Host '[2/5] Unit tests'
-    & python -m unittest discover -s tests -v
+    Write-Host '[2/5] Native desktop and switcher tests'
+    # The retired local-browser surface remains in the repository for migration
+    # compatibility, but is not part of the native desktop acceptance path.
+    & python -m unittest -v tests.test_switch_provider tests.test_profile_catalog tests.test_contract_fixtures tests.test_ui_contract
     if ($LASTEXITCODE -ne 0) { throw 'Unit tests failed.' }
 
-    Write-Host '[3/5] PowerShell parser checks'
-    foreach ($file in @('CodexProviderSwitcher.ps1', 'Install-DesktopShortcut.ps1', 'Test-Switcher.ps1')) {
+    Write-Host '[3/5] Packaging-script parser checks'
+    foreach ($file in @('Install-DesktopShortcut.ps1', 'New-WindowsExecutable.ps1', 'Test-Switcher.ps1')) {
         $tokens = $null
         $errors = $null
         [System.Management.Automation.Language.Parser]::ParseFile(
@@ -40,7 +43,7 @@ model_provider = "openai"
 enabled = true
 '@
         $state = Join-Path $tempRoot 'missing-state.sqlite'
-        & python switch_provider.py --config $config --state-db $state switch qilin --dry-run | Out-Null
+        & python switch_provider.py --config $config --state-db $state switch openai --dry-run | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Isolated CLI dry-run failed.' }
         if (Test-Path (Join-Path $tempRoot 'backups')) { throw 'Dry-run unexpectedly created backups.' }
     }
@@ -61,5 +64,6 @@ enabled = true
     Write-Host 'PASS: all switcher checks completed successfully.' -ForegroundColor Green
 }
 finally {
+    Remove-Item Env:LANSI_PROVIDER_MANAGER_TEST_MODE -ErrorAction SilentlyContinue
     Pop-Location
 }

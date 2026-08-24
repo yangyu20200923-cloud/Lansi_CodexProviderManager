@@ -13,11 +13,15 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: bash scripts/check-repository-layout.sh
       - run: bash scripts/check-project-docs.sh
+      - run: python3 spec/tests/validate_profiles.py
+      - run: python3 spec/tests/validate_safety_fixtures.py
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - run: swift test --disable-index-store
+        working-directory: apps/macos
+      - run: swift run --disable-index-store IntegrationProbe
         working-directory: apps/macos
       - run: ./scripts/package-smoke.sh
         working-directory: apps/macos

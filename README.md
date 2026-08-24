@@ -1,5 +1,9 @@
 # Lansi_CodexProviderManager
 
+> Product scope and release completion are defined by
+> [`PRODUCT_CONTRACT.md`](PRODUCT_CONTRACT.md). Fixed built-in Provider choices
+> are a prototype baseline, not the v0.1 Beta.
+
 兰司观察 Codex_Provider 切换器 is a local, cross-platform provider-profile manager for an existing Codex home.
 
 兰司观察 Codex_Provider 切换器是一个本地跨平台 Provider 配置管理工具，始终使用已有的 Codex 主目录。

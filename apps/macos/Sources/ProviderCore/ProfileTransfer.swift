@@ -1,0 +1,156 @@
+import Foundation
+
+public enum ProfileTransferError: Error, Equatable {
+    case builtInProfile
+    case invalidProfile
+}
+
+/// Converts between the macOS persistence model and the shared Windows-compatible catalog.
+public enum ProfileTransfer {
+    public static func export(_ profile: ProviderProfile) throws -> Data {
+        guard !profile.id.isBuiltIn else { throw ProfileTransferError.builtInProfile }
+        guard ProviderValidator.validate(profile).isEmpty else { throw ProfileTransferError.invalidProfile }
+        return try encoder.encode(PortableCatalog(schemaVersion: 2, profiles: [PortableProfile(profile: profile)]))
+    }
+
+    public static func importProfile(from data: Data) throws -> ProviderProfile {
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let dictionary = object as? [String: Any] else { throw ProfileTransferError.invalidProfile }
+        let profile: ProviderProfile
+        if dictionary["profiles"] != nil {
+            try validateCatalogShape(dictionary)
+            guard let profiles = dictionary["profiles"] as? [[String: Any]], profiles.count == 1 else {
+                throw ProfileTransferError.invalidProfile
+            }
+            try validateCanonicalProfileShape(profiles[0])
+            let catalog = try JSONDecoder().decode(PortableCatalog.self, from: data)
+            guard let portable = catalog.profiles.first else { throw ProfileTransferError.invalidProfile }
+            profile = try portable.providerProfile()
+        } else {
+            // Previous macOS releases exported one internal profile object. Keep those files importable.
+            try validateLegacyProfileShape(dictionary)
+            profile = try JSONDecoder().decode(ProviderProfile.self, from: data)
+        }
+        guard !profile.id.isBuiltIn, !profile.isBuiltIn else { throw ProfileTransferError.builtInProfile }
+        guard ProviderValidator.validate(profile).isEmpty else { throw ProfileTransferError.invalidProfile }
+        var portable = profile
+        portable.hasStoredKey = false
+        return portable
+    }
+
+    private static let canonicalCatalogKeys: Set<String> = ["schemaVersion", "profiles"]
+    private static let canonicalProfileKeys: Set<String> = [
+        "id", "providerId", "name", "enabled", "authMode", "baseUrl", "wireApi", "apiKeyEnv",
+        "authCommand", "httpHeaders", "envHttpHeaders", "model", "models", "reasoningEffort",
+        "reviewModel", "supportsStandaloneWebSearch", "legacyAliases", "configOverrides"
+    ]
+    private static let legacyProfileKeys: Set<String> = [
+        "id", "displayName", "authMode", "baseURL", "wireAPI", "apiKeyEnvironment", "model", "models",
+        "reasoningEffort", "reviewModel", "configOverrides", "isBuiltIn", "enabled", "hasStoredKey",
+        "providerID", "authCommand", "httpHeaders", "environmentHTTPHeaders", "supportsStandaloneWebSearch",
+        "legacyAliases"
+    ]
+
+    private static func validateCatalogShape(_ catalog: [String: Any]) throws {
+        guard Set(catalog.keys).isSubset(of: canonicalCatalogKeys),
+              catalog["profiles"] is [[String: Any]],
+              (catalog["schemaVersion"] as? Int ?? 1) <= 2 else {
+            throw ProfileTransferError.invalidProfile
+        }
+    }
+
+    private static func validateCanonicalProfileShape(_ profile: [String: Any]) throws {
+        guard Set(profile.keys).isSubset(of: canonicalProfileKeys),
+              Set(["id", "name", "enabled", "authMode"]).isSubset(of: Set(profile.keys)) else {
+            throw ProfileTransferError.invalidProfile
+        }
+    }
+
+    private static func validateLegacyProfileShape(_ profile: [String: Any]) throws {
+        guard Set(profile.keys).isSubset(of: legacyProfileKeys),
+              Set(["id", "displayName", "isBuiltIn"]).isSubset(of: Set(profile.keys)) else {
+            throw ProfileTransferError.invalidProfile
+        }
+    }
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }()
+}
+
+private struct PortableCatalog: Codable {
+    let schemaVersion: Int?
+    let profiles: [PortableProfile]
+}
+
+private struct PortableProfile: Codable {
+    let id: String
+    let providerId: String?
+    let name: String
+    let enabled: Bool
+    let authMode: ProviderAuthMode
+    let baseUrl: String?
+    let wireApi: String?
+    let apiKeyEnv: String?
+    let authCommand: ProviderAuthCommand?
+    let httpHeaders: [String: String]?
+    let envHttpHeaders: [String: String]?
+    let model: String?
+    let models: [String]?
+    let reasoningEffort: String?
+    let reviewModel: String?
+    let supportsStandaloneWebSearch: Bool?
+    let legacyAliases: [String]?
+    let configOverrides: [String: String]?
+
+    init(profile: ProviderProfile) {
+        id = profile.id.rawValue
+        providerId = profile.providerID
+        name = profile.displayName
+        enabled = profile.enabled
+        authMode = profile.authMode
+        baseUrl = profile.baseURL
+        wireApi = profile.wireAPI
+        apiKeyEnv = profile.apiKeyEnvironment
+        authCommand = profile.authCommand
+        httpHeaders = profile.httpHeaders
+        envHttpHeaders = profile.environmentHTTPHeaders
+        model = profile.model
+        models = profile.models
+        reasoningEffort = profile.reasoningEffort
+        reviewModel = profile.reviewModel
+        supportsStandaloneWebSearch = profile.supportsStandaloneWebSearch
+        legacyAliases = profile.legacyAliases
+        configOverrides = profile.configOverrides
+    }
+
+    func providerProfile() throws -> ProviderProfile {
+        guard UUID(uuidString: id) != nil, let providerID = ProviderID(rawValue: id) else {
+            throw ProfileTransferError.invalidProfile
+        }
+        return ProviderProfile(
+            id: providerID,
+            providerID: providerId,
+            displayName: name,
+            authMode: authMode,
+            baseURL: baseUrl,
+            wireAPI: wireApi,
+            apiKeyEnvironment: apiKeyEnv,
+            authCommand: authCommand,
+            httpHeaders: httpHeaders ?? [:],
+            environmentHTTPHeaders: envHttpHeaders ?? [:],
+            model: model,
+            models: models ?? [],
+            reasoningEffort: reasoningEffort,
+            reviewModel: reviewModel,
+            supportsStandaloneWebSearch: supportsStandaloneWebSearch ?? false,
+            legacyAliases: legacyAliases ?? [],
+            configOverrides: configOverrides ?? [:],
+            isBuiltIn: false,
+            enabled: enabled,
+            hasStoredKey: false
+        )
+    }
+}

@@ -10,14 +10,19 @@
     "enabled": {"type": "boolean"},
     "authMode": {"type": "string", "enum": ["chatgpt_login", "api_key"]},
     "baseUrl": {"type": "string", "format": "uri"},
-    "wireApi": {"type": "string", "enum": ["responses", "chat_completions", "custom"]},
+    "wireApi": {"const": "responses"},
     "apiKeyEnv": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,127}$"},
     "model": {"type": "string", "minLength": 1},
+    "models": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
     "reasoningEffort": {"type": "string"},
     "reviewModel": {"type": "string"},
     "configOverrides": {"type": "object", "additionalProperties": false}
   },
   "allOf": [
-    {"if": {"properties": {"authMode": {"const": "api_key"}}}, "then": {"required": ["baseUrl", "apiKeyEnv"]}}
+    {"if": {"properties": {"authMode": {"const": "api_key"}}}, "then": {"required": ["baseUrl", "apiKeyEnv", "model"]}}
   ]
 }

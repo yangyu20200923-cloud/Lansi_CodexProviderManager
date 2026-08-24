@@ -6,6 +6,8 @@
 	<string>Codex Provider Manager</string>
 	<key>CFBundleExecutable</key>
 	<string>CodexProviderManager</string>
+	<key>CFBundleIconFile</key>
+	<string>LansiObserve.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.codex.ProviderManager</string>
 	<key>CFBundleName</key>

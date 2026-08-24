@@ -1,0 +1,49 @@
+{
+  "schema_version": 3,
+  "project": "Lansi Codex Provider Manager",
+  "governance_state": "ACTIVE",
+  "updated_at": "2026-08-24T15:36:45+00:00",
+  "sessions": [
+    {
+      "session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+      "role": "MAIN",
+      "status": "ACTIVE",
+      "title": "LCP P2 LCP04 M",
+      "active_acceptance_id": "LCP-04",
+      "mode": "VERIFY",
+      "scope": "LCP-04: Qilin stale-lock recovery, provider switching, full model catalog/search, existing conversation routing",
+      "forbidden_actions": "No release, push, merge, deployment, credential exposure",
+      "observed_at": "2026-08-17T05:34:46+00:00"
+    },
+    {
+      "session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
+      "role": "BRANCH",
+      "status": "ACTIVE",
+      "parent_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+      "title": "LCP P5 LCP08 B1",
+      "active_acceptance_id": "LCP-08",
+      "mode": "VERIFY",
+      "scope": "LCP-08: Windows Provider v2 alignment to accepted macOS contract; iOS frozen",
+      "forbidden_actions": "No iOS changes, real Codex home writes, credential exposure, push, merge, deployment, or release publication",
+      "observed_at": "2026-08-24T13:04:46+00:00",
+      "handoff": "handoffs/2026-08-17-lcp04-baseline-rebuild.md"
+    }
+  ],
+  "revision": 149,
+  "current_main_session_id": "019ff021-6469-74a0-a6f8-e2ec5161d372",
+  "program": {
+    "execution": "CONTINUOUS",
+    "lifecycle": "ADVANCE",
+    "owner_session_id": "01a00eab-1dc7-7382-8641-cddf0e92b9dc",
+    "current_phase_id": "P5",
+    "active_acceptance_id": "LCP-08",
+    "mode": "VERIFY",
+    "next_phase_id": "P5",
+    "next_acceptance_id": "LCP-09",
+    "candidate": "published prerelease v0.2.0-internal.1 at d0d495c: macOS LCP-07 plus user-accepted Windows LCP-08 Provider v2 package; PR #2 open and unmerged; next LCP-09; iOS frozen",
+    "pause_reason": null,
+    "blocked_items": [],
+    "updated_at": "2026-08-24T15:36:45+00:00",
+    "roadmap_digest": "sha256:19a54a081b0f5c1f6f83284137677473f4f1d3f285d6e57be316648aee203de1"
+  }
+}

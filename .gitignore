@@ -5,6 +5,7 @@ Thumbs.db
 # macOS SwiftPM build output and packaged applications
 apps/macos/.build/
 apps/macos/dist/
+apps/windows/dist/
 apps/windows/__pycache__/
 apps/windows/tests/__pycache__/
 

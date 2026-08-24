@@ -12,3 +12,9 @@
 - A running Codex prompt must continue into shutdown and switching within the same button action; a warning must not silently cancel and imply success.
 - Success is shown only after config and thread-provider readback verification.
 - VectorEngine uses `https://api.vectorengine.cn/v1`; the previous `.ai` endpoint is legacy-only and is never rendered into a new config.
+
+## 2026-08-17 (supersedes the provider choices above)
+
+- The packaged application bundles only the OpenAI default Provider.
+- The Qilin and VectorEngine built-ins and their managed API-key/base-URL handling were removed from the shipped Windows runtime; the decisions above are retained as historical record.
+- Third-party Providers are only created by the user and are never bundled or shipped with API keys.

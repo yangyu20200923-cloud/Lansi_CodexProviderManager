@@ -1,0 +1,18 @@
+{
+  "profiles": [
+    {
+      "id": "35c5a9e6-148b-4ebd-b771-97cf3b04e982",
+      "name": "LCP-03 Cross-platform Fixture",
+      "enabled": false,
+      "authMode": "api_key",
+      "baseUrl": "https://api.example.invalid/v1",
+      "wireApi": "responses",
+      "apiKeyEnv": "LCP03_FIXTURE_API_KEY",
+      "model": "lcp-03-model",
+      "models": ["lcp-03-model", "lcp-03-fast"],
+      "reasoningEffort": "high",
+      "reviewModel": "lcp-03-review-model",
+      "configOverrides": {}
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum SwitchLockError: Error, Equatable {
@@ -24,7 +25,13 @@ public final class SwitchLock: @unchecked Sendable {
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         } catch CocoaError.fileWriteFileExists {
-            throw SwitchLockError.alreadyHeld
+            // A crashed manager can leave the directory behind. Never remove a
+            // live lock, but reclaim one whose recorded owner PID is gone so a
+            // subsequent switch is not permanently blocked by `alreadyHeld`.
+            guard reclaimIfStale(url: url) else {
+                throw SwitchLockError.alreadyHeld
+            }
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
         }
 
         let lock = SwitchLock(url: url, ownerID: ownerID)
@@ -40,6 +47,40 @@ public final class SwitchLock: @unchecked Sendable {
         } catch {
             try? FileManager.default.removeItem(at: url)
             throw error
+        }
+    }
+
+    /// Returns true only when the existing lock has a valid owner record and
+    /// that owner's process is no longer alive. Invalid or unreadable owner
+    /// metadata remains held rather than being guessed as stale.
+    private static func reclaimIfStale(url: URL) -> Bool {
+        let ownerURL = url.appendingPathComponent("owner.json")
+        guard let data = try? Data(contentsOf: ownerURL),
+              let owner = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let rawPID = owner["pid"],
+              let pid = Int32(rawPID),
+              pid > 0,
+              pid != Int32(ProcessInfo.processInfo.processIdentifier) else {
+            return false
+        }
+
+        errno = 0
+        let result = kill(pid, 0)
+        if result == 0 || errno == EPERM {
+            return false
+        }
+        guard errno == ESRCH else { return false }
+
+        // Re-read the owner record immediately before removal. This avoids
+        // deleting a lock that another process replaced while we inspected it.
+        guard let latest = try? Data(contentsOf: ownerURL), latest == data else {
+            return false
+        }
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            return false
         }
     }
 
